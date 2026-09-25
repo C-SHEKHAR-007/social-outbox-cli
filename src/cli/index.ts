@@ -8,6 +8,7 @@ import { runImport } from './commands/import.js';
 import { runInit } from './commands/init.js';
 import { runRecheck } from './commands/recheck.js';
 import { runScan } from './commands/scan.js';
+import { runSchedule, type ScheduleCommandOptions } from './commands/schedule.js';
 import { runShow } from './commands/show.js';
 import { runStatus } from './commands/status.js';
 import { runValidate } from './commands/validate.js';
@@ -54,6 +55,25 @@ program
   .option('--dry-run', 'report without saving')
   .action((options: { dryRun?: boolean }) => {
     runRecheck(workspace(), options);
+  });
+
+program
+  .command('schedule')
+  .description('auto-assign scheduled_at to unscheduled videos using daily time slots (preview unless --apply)')
+  .option('--start <date>', 'first day, YYYY-MM-DD (default: today)')
+  .option('--reel-slots <times>', 'daily Reel times, e.g. 09:00,14:00,20:00 (default REEL_SLOTS; "none" to skip)')
+  .option('--video-slots <times>', 'daily Page video times (default VIDEO_SLOTS; "none" to skip)')
+  .option('--order <order>', 'filename | id | duration | random', 'filename')
+  .option('--seed <n>', 'seed for --order random (reproducible)')
+  .option('--target <target>', 'reel | video | all', 'all')
+  .option('--ids <ids>', 'only these video ids, e.g. 1,2,5-8')
+  .option('--days <n>', 'only plan this many days ahead')
+  .option('--limit <n>', 'schedule at most n videos per target')
+  .option('--reset', 're-plan videos that already have a schedule (not yet submitted)')
+  .option('--clear', 'remove schedules instead (not yet submitted videos only)')
+  .option('--apply', 'save the plan (otherwise preview only)')
+  .action((options: Omit<ScheduleCommandOptions, 'ids'> & { ids?: string }) => {
+    runSchedule(workspace(), { ...options, ids: parseIds(options.ids) });
   });
 
 program
