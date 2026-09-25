@@ -3,6 +3,8 @@ import { Command } from 'commander';
 import { UserError } from '../utils/errors.js';
 import { packageVersion } from '../utils/package-root.js';
 import { runDoctor } from './commands/doctor.js';
+import { runExport } from './commands/export.js';
+import { runImport } from './commands/import.js';
 import { runInit } from './commands/init.js';
 import { runScan } from './commands/scan.js';
 import { runStatus } from './commands/status.js';
@@ -38,6 +40,26 @@ program
   .option('--dry-run', 'report what would change without saving anything')
   .action(async (directory: string, options: { dryRun?: boolean }) => {
     await runScan(workspace(), directory, { dryRun: options.dryRun, progress: process.stderr.isTTY });
+  });
+
+program
+  .command('export')
+  .description('write videos to a CSV for review/editing (default exports/reels.csv)')
+  .option('-o, --out <file>', 'output path')
+  .option('--all', 'include already-published videos')
+  .action((options: { out?: string; all?: boolean }) => {
+    runExport(workspace(), options);
+  });
+
+program
+  .command('import')
+  .argument('<csv>', 'CSV file previously produced by `export`')
+  .description('validate and apply edits from a CSV (all-or-nothing)')
+  .option('--dry-run', 'show what would change without saving')
+  .option('--force', 'overwrite rows changed since export (not-yet-submitted rows only)')
+  .option('--partial', 'apply valid rows even if some rows are invalid')
+  .action((file: string, options: { dryRun?: boolean; force?: boolean; partial?: boolean }) => {
+    process.exitCode = runImport(workspace(), file, options).code;
   });
 
 program
