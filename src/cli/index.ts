@@ -7,8 +7,11 @@ import { runExport } from './commands/export.js';
 import { runImport } from './commands/import.js';
 import { runInit } from './commands/init.js';
 import { runScan } from './commands/scan.js';
+import { runShow } from './commands/show.js';
 import { runStatus } from './commands/status.js';
+import { runValidate } from './commands/validate.js';
 import { createContext } from './context.js';
+import { parseIds } from './ids.js';
 
 /** The workspace is the directory the CLI is run from. */
 const workspace = () => createContext({ cwd: process.cwd() });
@@ -60,6 +63,24 @@ program
   .option('--partial', 'apply valid rows even if some rows are invalid')
   .action((file: string, options: { dryRun?: boolean; force?: boolean; partial?: boolean }) => {
     process.exitCode = runImport(workspace(), file, options).code;
+  });
+
+program
+  .command('validate')
+  .description('check READY videos (or --ids) are publishable: file, specs, content, schedule')
+  .option('--ids <ids>', 'only these video ids, e.g. 1,2,5-8')
+  .action(async (options: { ids?: string }) => {
+    process.exitCode = (await runValidate(workspace(), { ids: parseIds(options.ids) })).code;
+  });
+
+program
+  .command('show')
+  .argument('<id>', 'video id')
+  .description('show everything about one video, including publish attempts')
+  .action((id: string) => {
+    const [videoId] = parseIds(id) ?? [];
+    if (videoId === undefined) throw new UserError('Provide a video id');
+    runShow(workspace(), videoId);
   });
 
 program
