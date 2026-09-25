@@ -4,6 +4,7 @@ import { UserError } from '../utils/errors.js';
 import { packageVersion } from '../utils/package-root.js';
 import { runDoctor } from './commands/doctor.js';
 import { runExport } from './commands/export.js';
+import { runFacebookLogin, runFacebookLogout, runFacebookPages, runFacebookVerify } from './commands/facebook.js';
 import { runImport } from './commands/import.js';
 import { runInit } from './commands/init.js';
 import { runRecheck } from './commands/recheck.js';
@@ -119,6 +120,40 @@ program
   .description('show counts by state and target, quota usage, upcoming and failed videos')
   .action(() => {
     runStatus(workspace());
+  });
+
+const facebook = program.command('facebook').description('connect a Facebook Page (official browser login)');
+
+facebook
+  .command('login')
+  .description('log in through your browser and save the Page token to the OS keychain')
+  .option('--page <id>', 'Page to use when you manage several')
+  .option('--port <port>', 'local callback port (default FACEBOOK_OAUTH_PORT, 8585)')
+  .option('--no-browser', 'print the login URL instead of opening a browser')
+  .action(async (options: { page?: string; port?: string; browser?: boolean }) => {
+    await runFacebookLogin(workspace(), options);
+  });
+
+facebook
+  .command('pages')
+  .description('list the Pages you manage, or switch with --select')
+  .option('--select <id>', 'publish to this Page from now on')
+  .action(async (options: { select?: string }) => {
+    await runFacebookPages(workspace(), options);
+  });
+
+facebook
+  .command('verify')
+  .description('check the Page token is valid and has the required permissions')
+  .action(async () => {
+    process.exitCode = (await runFacebookVerify(workspace())).code;
+  });
+
+facebook
+  .command('logout')
+  .description('remove stored Facebook tokens')
+  .action(() => {
+    runFacebookLogout(workspace());
   });
 
 program.parseAsync(process.argv).catch((err: unknown) => {
