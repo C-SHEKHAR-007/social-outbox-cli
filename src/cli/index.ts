@@ -4,6 +4,7 @@ import { UserError } from '../utils/errors.js';
 import { packageVersion } from '../utils/package-root.js';
 import { runDoctor } from './commands/doctor.js';
 import { runInit } from './commands/init.js';
+import { runScan } from './commands/scan.js';
 import { runStatus } from './commands/status.js';
 import { createContext } from './context.js';
 
@@ -28,6 +29,15 @@ program
   .description('check dependencies, configuration, database and credentials')
   .action(async () => {
     process.exitCode = await runDoctor({ cwd: process.cwd() });
+  });
+
+program
+  .command('scan')
+  .argument('<directory>', 'folder containing videos (scanned recursively)')
+  .description('find new videos, hash them, read metadata and check specs')
+  .option('--dry-run', 'report what would change without saving anything')
+  .action(async (directory: string, options: { dryRun?: boolean }) => {
+    await runScan(workspace(), directory, { dryRun: options.dryRun, progress: process.stderr.isTTY });
   });
 
 program
