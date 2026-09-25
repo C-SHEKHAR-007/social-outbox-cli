@@ -1,0 +1,16 @@
+{
+  "streams": [
+    { "codec_name": "mjpeg", "codec_type": "video", "width": 600, "height": 600, "disposition": { "attached_pic": 1 } },
+    {
+      "codec_name": "vp9",
+      "codec_type": "video",
+      "width": 720,
+      "height": 1280,
+      "pix_fmt": "yuv420p",
+      "r_frame_rate": "30000/1001",
+      "avg_frame_rate": "30000/1001"
+    },
+    { "codec_name": "opus", "codec_type": "audio", "sample_rate": "48000", "channels": 2 }
+  ],
+  "format": { "format_name": "matroska,webm", "duration": "N/A" }
+}

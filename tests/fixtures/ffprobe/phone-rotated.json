@@ -1,0 +1,28 @@
+{
+  "streams": [
+    {
+      "index": 0,
+      "codec_name": "h264",
+      "profile": "High",
+      "codec_type": "video",
+      "width": 1920,
+      "height": 1080,
+      "pix_fmt": "yuv420p",
+      "field_order": "progressive",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "duration": "12.5",
+      "side_data_list": [{ "side_data_type": "Display Matrix", "displaymatrix": "...", "rotation": -90 }]
+    },
+    {
+      "index": 1,
+      "codec_name": "aac",
+      "profile": "LC",
+      "codec_type": "audio",
+      "sample_rate": "48000",
+      "channels": 2,
+      "bit_rate": "192000"
+    }
+  ],
+  "format": { "format_name": "mov,mp4,m4a,3gp,3g2,mj2", "duration": "12.512000", "bit_rate": "8000000" }
+}
