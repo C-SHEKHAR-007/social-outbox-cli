@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+data/
+logs/
+exports/
+videos/
+config/page-profile.yaml
+*.log
+coverage/

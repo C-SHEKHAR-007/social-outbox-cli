@@ -1,0 +1,56 @@
+{
+  "name": "facebook-reel-publisher",
+  "version": "0.1.0",
+  "description": "Local-first CLI to scan, caption, schedule and publish Facebook Reels via the official Graph API",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "reel-cli": "dist/cli/index.js"
+  },
+  "engines": {
+    "node": ">=20.5"
+  },
+  "scripts": {
+    "clean": "node -e \"for (const d of ['dist','coverage']) require('fs').rmSync(d, { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
+    "reel-cli": "tsx src/cli/index.ts",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "^2.1.0",
+    "better-sqlite3": "^11.10.0",
+    "commander": "^14.0.3",
+    "csv-parse": "^7.0.3",
+    "csv-stringify": "^6.9.0",
+    "dotenv": "^18.0.4",
+    "drizzle-orm": "^0.45.3",
+    "execa": "^9.6.1",
+    "luxon": "^3.7.2",
+    "pino": "^10.3.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/luxon": "^3.7.5",
+    "@types/node": "^20.19.43",
+    "@vitest/coverage-v8": "^4.1.11",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^4.1.11"
+  }
+}

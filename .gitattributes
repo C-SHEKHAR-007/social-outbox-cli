@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.mp4 binary
+*.mov binary
+*.webm binary
+*.m4v binary
+*.db binary
+*.png binary
+*.jpg binary
+drizzle/meta/*.json linguist-generated=true
+package-lock.json linguist-generated=true
