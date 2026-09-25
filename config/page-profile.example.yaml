@@ -1,0 +1,16 @@
+# Page profile: steers AI caption generation (used from Phase 5).
+page_name: 'My Page'
+niche: 'Hindi drama short clips'
+language: 'Hinglish' # hi | en | Hinglish
+tone: 'emotional, curious, short'
+caption_max_chars: 220
+hashtags:
+  count: 5
+  always_include: ['#reels']
+  banned: ['#fyp']
+banned_words: []
+call_to_action_examples:
+  - 'Follow for part 2'
+  - 'Comment your thoughts'
+example_captions:
+  - 'Some stories stay with you long after the episode ends...'
