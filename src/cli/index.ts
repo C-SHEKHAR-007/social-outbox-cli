@@ -6,6 +6,7 @@ import { runDoctor } from './commands/doctor.js';
 import { runExport } from './commands/export.js';
 import { runImport } from './commands/import.js';
 import { runInit } from './commands/init.js';
+import { runRecheck } from './commands/recheck.js';
 import { runScan } from './commands/scan.js';
 import { runShow } from './commands/show.js';
 import { runStatus } from './commands/status.js';
@@ -43,6 +44,16 @@ program
   .option('--dry-run', 'report what would change without saving anything')
   .action(async (directory: string, options: { dryRun?: boolean }) => {
     await runScan(workspace(), directory, { dryRun: options.dryRun, progress: process.stderr.isTTY });
+  });
+
+program
+  .command('recheck')
+  .description(
+    'recompute publish target (Reel vs Page video) and spec results, e.g. after changing REEL_MAX_DURATION_S',
+  )
+  .option('--dry-run', 'report without saving')
+  .action((options: { dryRun?: boolean }) => {
+    runRecheck(workspace(), options);
   });
 
 program
