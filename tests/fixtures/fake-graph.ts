@@ -35,7 +35,7 @@ export function fakeGraph(routes: Record<string, Route>) {
     const headers = Object.fromEntries(new Headers(init.headers).entries());
     const req: FakeGraphRequest = { method: init.method ?? 'GET', host: url.host, path, params, headers, bodyBytes };
     requests.push(req);
-    const route = routes[path];
+    const route = routes[path] ?? routes['*'];
     if (!route)
       return new Response(JSON.stringify({ error: { message: `no fake route for ${path}`, code: 100 } }), {
         status: 400,
