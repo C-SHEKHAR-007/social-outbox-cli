@@ -12,7 +12,7 @@
   },
   "scripts": {
     "clean": "node -e \"for (const d of ['dist','coverage']) require('fs').rmSync(d, { recursive: true, force: true })\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "build": "npm run clean && tsc -p tsconfig.build.json && node -e \"require('fs').chmodSync('dist/cli/index.js', 0o755)\"",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
