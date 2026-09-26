@@ -38,8 +38,13 @@ export interface PublisherDeps {
   maxRetries: number;
   /** Backoff before retry n (last value repeats). Default 5s, 15s, 45s. */
   backoffMs?: number[];
-  /** How long to poll Facebook for processing to finish before leaving the video in PROCESSING. */
+  /** How long to poll Facebook for processing to finish (POST_NOW) before leaving the video PROCESSING. */
   pollTimeoutMs: number;
+  /**
+   * Same for scheduled videos and drafts. Default 0: one quick check, then `reconcile` confirms later
+   * (the video is already safely on Facebook, so waiting only slows big batches down).
+   */
+  scheduledPollTimeoutMs?: number;
   pollIntervalMs: number;
   hash?: (file: string) => Promise<string>;
 }
@@ -284,7 +289,8 @@ async function verify(
   fbVideoId: string,
   decision: SubmitDecision,
 ): Promise<PublishOutcome> {
-  const deadline = deps.now().getTime() + deps.pollTimeoutMs;
+  const timeout = decision.kind === 'now' ? deps.pollTimeoutMs : (deps.scheduledPollTimeoutMs ?? 0);
+  const deadline = deps.now().getTime() + timeout;
   for (;;) {
     let remote: RemoteState;
     try {

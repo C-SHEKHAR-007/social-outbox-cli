@@ -19,6 +19,8 @@ export interface PublishRunOptions {
   targets?: PublishTarget[];
   draft?: boolean;
   dryRun?: boolean;
+  /** Videos uploaded in parallel (default 1). */
+  concurrency?: number;
 }
 
 export type PlannedDecision = PublishDecision | { kind: 'invalid'; reasons: string[] };
@@ -77,10 +79,18 @@ export async function runPublish(
     }
   }
 
-  // 2. Plan and submit.
+  // 2. Plan and submit, uploading up to `concurrency` videos at a time.
+  const concurrency = opts.dryRun ? 1 : Math.max(1, opts.concurrency ?? 1);
+  const running = new Set<Promise<void>>();
+  // Reels decided/in flight in this run but not yet counted by quotaUsed() (finish_sent_at unset).
+  let reservedReels = 0;
   let submitted = 0;
+  // Read through a function: finished uploads set report.stopped asynchronously.
+  const isStopped = (): boolean => report.stopped !== undefined;
+
   for (const video of findCandidates(db, deps.now(), opts)) {
-    const decision = await plan(db, video, deps.now(), opts);
+    if (isStopped()) break;
+    const decision = await plan(db, video, deps.now(), opts, reservedReels);
     const item: PlanItem = { video, decision };
     report.items.push(item);
     const submits = decision.kind === 'now' || decision.kind === 'schedule' || decision.kind === 'draft';
@@ -95,27 +105,54 @@ export async function runPublish(
           nextAttemptAt: decision.until ? toIso(decision.until) : null,
         });
       }
+      // The dry run counts Reels down too, so its plan matches what a real run would do.
+      if (opts.dryRun && submits && video.publishTarget === 'REEL') reservedReels += 1;
       continue;
     }
     if (opts.limit !== undefined && submitted >= opts.limit) {
       item.decision = { kind: 'skip', reason: `--limit ${opts.limit} reached` };
       continue;
     }
-    submitted += 1;
-    onEvent({ type: 'start', video, decision });
-    const outcome = await publishOne(deps, video.id, decision);
-    item.outcome = outcome;
-    onEvent({ type: 'done', video, decision, outcome });
-    if (outcome.stop === 'fatal' || outcome.stop === 'pause') {
-      report.stopped = { reason: outcome.stop, message: outcome.message ?? '' };
+
+    while (running.size >= concurrency) await Promise.race(running);
+    if (isStopped()) {
+      item.decision = { kind: 'skip', reason: 'run stopped' };
       break;
     }
-    if (outcome.stop === 'rate_limit') report.rateLimited.push(video.publishTarget);
+    if (report.rateLimited.includes(video.publishTarget)) {
+      item.decision = { kind: 'hold', reason: 'rate limited earlier in this run', until: null };
+      continue;
+    }
+
+    submitted += 1;
+    const isReel = video.publishTarget === 'REEL';
+    if (isReel) reservedReels += 1;
+    onEvent({ type: 'start', video, decision });
+    const task: Promise<void> = publishOne(deps, video.id, decision).then((outcome) => {
+      if (isReel) reservedReels -= 1; // from here on quotaUsed() counts it (if FINISH was sent)
+      item.outcome = outcome;
+      onEvent({ type: 'done', video, decision, outcome });
+      if ((outcome.stop === 'fatal' || outcome.stop === 'pause') && !report.stopped) {
+        report.stopped = { reason: outcome.stop, message: outcome.message ?? '' };
+      }
+      if (outcome.stop === 'rate_limit' && !report.rateLimited.includes(video.publishTarget)) {
+        report.rateLimited.push(video.publishTarget);
+      }
+    });
+    const tracked: Promise<void> = task.finally(() => running.delete(tracked));
+    running.add(tracked);
   }
+  await Promise.all(running);
   return report;
 }
 
-async function plan(db: Db, video: Video, now: Date, opts: PublishRunOptions): Promise<PlannedDecision> {
+async function plan(
+  db: Db,
+  video: Video,
+  now: Date,
+  opts: PublishRunOptions,
+  reservedReels: number,
+): Promise<PlannedDecision> {
   if (video.state !== 'UPLOADING') {
     const check = await validateVideo(video, { config: opts.config, now, facebookConnected: true });
     const errors = opts.draft
@@ -127,7 +164,7 @@ async function plan(db: Db, video: Video, now: Date, opts: PublishRunOptions): P
   return decidePublish(video, {
     now,
     draft: opts.draft,
-    reelQuotaLeft: opts.config.publishing.quotaPer24h - used,
+    reelQuotaLeft: opts.config.publishing.quotaPer24h - used - reservedReels,
     reelQuotaFreesAt: quotaFreesAt(db, now),
   });
 }

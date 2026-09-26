@@ -36,15 +36,20 @@ export interface PublishCommandOptions {
   draft?: boolean;
   dryRun?: boolean;
   yes?: boolean;
-  /** Seconds to wait for Facebook processing; false (from --no-wait) = don't wait. */
+  /**
+   * Seconds to wait for Facebook processing, for every video. Default: 120 s for POST_NOW only
+   * (scheduled videos are confirmed later by `reconcile`). false (from --no-wait) = never wait.
+   */
   wait?: string | false;
+  /** Videos uploaded in parallel (default PUBLISH_CONCURRENCY). */
+  concurrency?: string;
 }
 
 function buildDeps(
   ctx: AppContext,
   db: Db,
   deps: PublishCommandDeps,
-  pollSeconds: number,
+  wait: { now: number; scheduled: number },
 ): { publisher: PublisherDeps; pageLabel: string } {
   const creds = resolvePageCredentials(ctx.config, db, ctx.tokenStore());
   if (!creds) throw new UserError('No Facebook Page connected. Run: reel-cli facebook login');
@@ -63,7 +68,8 @@ function buildDeps(
       logger: ctx.logger,
       maxRetries: ctx.config.publishing.maxRetries,
       backoffMs: deps.backoffMs,
-      pollTimeoutMs: pollSeconds * 1000,
+      pollTimeoutMs: wait.now * 1000,
+      scheduledPollTimeoutMs: wait.scheduled * 1000,
       pollIntervalMs: 5000,
     },
   };
@@ -76,12 +82,20 @@ export async function runPublishCommand(
 ): Promise<{ report: PublishReport; code: number }> {
   const limit = opts.limit === undefined ? undefined : positiveInt(opts.limit, '--limit');
   const targets = parseTarget(opts.target);
-  const pollSeconds = opts.wait === false ? 0 : opts.wait === undefined ? 120 : positiveInt(opts.wait, '--wait');
+  const wait =
+    opts.wait === false
+      ? { now: 0, scheduled: 0 }
+      : opts.wait === undefined
+        ? { now: 120, scheduled: 0 }
+        : { now: positiveInt(opts.wait, '--wait'), scheduled: positiveInt(opts.wait, '--wait') };
+  const concurrency =
+    opts.concurrency === undefined ? ctx.config.publishing.concurrency : positiveInt(opts.concurrency, '--concurrency');
+  if (concurrency < 1 || concurrency > 5) throw new UserError('Invalid --concurrency: use 1 to 5');
   const tz = ctx.config.publishing.timezone;
 
   return ctx.withDbAsync(async (db) => {
-    const { publisher, pageLabel } = buildDeps(ctx, db, deps, pollSeconds);
-    const runOpts = { config: ctx.config, ids: opts.ids, limit, targets, draft: opts.draft };
+    const { publisher, pageLabel } = buildDeps(ctx, db, deps, wait);
+    const runOpts = { config: ctx.config, ids: opts.ids, limit, targets, draft: opts.draft, concurrency };
 
     // Always show the plan first (no network, no writes).
     const preview = await runPublish(publisher, { ...runOpts, dryRun: true });
@@ -105,14 +119,19 @@ export async function runPublishCommand(
     }
 
     ctx.print();
+    if (limited > 1) ctx.print(`Uploading ${limited} video(s), ${Math.min(concurrency, limited)} at a time…`);
     let n = 0;
+    const startedAt = new Map<number, number>();
     const report = await runPublish(publisher, runOpts, (e) => {
       if (e.type === 'reconciled') ctx.print(`↻ #${e.video.id} ${e.video.filename}: ${describeOutcome(e.outcome)}`);
-      if (e.type === 'start') {
+      if (e.type === 'start') startedAt.set(e.video.id, Date.now());
+      if (e.type === 'done') {
         n += 1;
-        ctx.print(`[${n}/${limited}] #${e.video.id} ${e.video.filename} (${TARGET_LABEL[e.video.publishTarget]}) …`);
+        const secs = Math.round((Date.now() - (startedAt.get(e.video.id) ?? Date.now())) / 1000);
+        ctx.print(
+          `[${n}/${limited}] #${e.video.id} ${e.video.filename} (${TARGET_LABEL[e.video.publishTarget]}) ${describeOutcome(e.outcome)} (${secs}s)`,
+        );
       }
-      if (e.type === 'done') ctx.print(`      ${describeOutcome(e.outcome)}`);
     });
     const code = renderSummary(ctx, report);
     ctx.logger.info(
@@ -129,7 +148,7 @@ export async function runReconcileCommand(
   deps: PublishCommandDeps = {},
 ): Promise<PublishOutcome[]> {
   return ctx.withDbAsync(async (db) => {
-    const { publisher } = buildDeps(ctx, db, deps, 0);
+    const { publisher } = buildDeps(ctx, db, deps, { now: 0, scheduled: 0 });
     const pending = findPendingReconcile(db, publisher.now(), { ids: opts.ids });
     if (!pending.length) {
       ctx.print('Nothing to reconcile: no videos are waiting on Facebook.');
@@ -250,7 +269,7 @@ function describeOutcome(o: PublishOutcome): string {
     case 'draft':
       return '✓ uploaded as private draft';
     case 'processing':
-      return '… uploaded, still processing on Facebook (run `reel-cli reconcile` later)';
+      return '✓ uploaded; Facebook is processing it (confirm later with `reel-cli reconcile`)';
     case 'uploading':
       return '↺ upload not finished; will resume on next publish';
     case 'held':
@@ -279,6 +298,11 @@ function renderSummary(ctx: AppContext, r: PublishReport): number {
   if (r.stopped?.reason === 'pause') {
     ctx.print(
       `✗ Publishing PAUSED: ${r.stopped.message}\n  Review the Page in Meta Business Suite, then run \`reel-cli resume\`.`,
+    );
+  }
+  if (count('processing')) {
+    ctx.print(
+      `${count('processing')} video(s) are on Facebook and still processing; run \`reel-cli reconcile\` in a few minutes to confirm them as SCHEDULED/PUBLISHED.`,
     );
   }
   if (count('unknown')) ctx.print('Some results are unknown; run `reel-cli reconcile` (it never re-posts).');

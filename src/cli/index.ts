@@ -132,8 +132,12 @@ program
   .option('--draft', 'upload as private drafts instead (testing; needs --ids)')
   .option('--dry-run', 'show the plan without sending anything')
   .option('-y, --yes', 'do not ask for confirmation')
-  .option('--wait <seconds>', 'how long to wait for Facebook processing (default 120)')
-  .option('--no-wait', 'do not wait for processing (reconcile picks it up later)')
+  .option('--concurrency <n>', 'videos uploaded in parallel, 1-5 (default PUBLISH_CONCURRENCY, 3)')
+  .option(
+    '--wait <seconds>',
+    'wait up to this long for Facebook processing, for every video (default: 120 s, POST_NOW only)',
+  )
+  .option('--no-wait', 'never wait for processing (reconcile confirms later)')
   .action(
     async (options: {
       ids?: string;
@@ -143,6 +147,7 @@ program
       dryRun?: boolean;
       yes?: boolean;
       wait?: string | false;
+      concurrency?: string;
     }) => {
       process.exitCode = (await runPublishCommand(workspace(), { ...options, ids: parseIds(options.ids) })).code;
     },

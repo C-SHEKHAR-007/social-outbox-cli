@@ -20,7 +20,7 @@ interface FakeVideo {
 }
 
 export function fakeFacebookVideos(
-  opts: { chunkSize?: number; processingPolls?: number; processingError?: string } = {},
+  opts: { chunkSize?: number; processingPolls?: number; processingError?: string; latencyMs?: number } = {},
 ) {
   const chunk = opts.chunkSize ?? 400;
   const videos = new Map<string, FakeVideo>();
@@ -184,8 +184,22 @@ export function fakeFacebookVideos(
   }
 
   const count = (pred: (r: (typeof graph.requests)[number]) => boolean) => graph.requests.filter(pred).length;
+  // Optional latency, with tracking of how many requests overlap (to test parallel uploads).
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const fetchWithLatency = (async (input: string | URL | Request, init?: RequestInit) => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    try {
+      if (opts.latencyMs) await new Promise((r) => setTimeout(r, opts.latencyMs));
+      return await graph.fetch(input, init);
+    } finally {
+      inFlight -= 1;
+    }
+  }) as typeof fetch;
   return {
-    fetch: graph.fetch,
+    fetch: fetchWithLatency,
+    maxInFlight: () => maxInFlight,
     requests: graph.requests,
     videos,
     fail,

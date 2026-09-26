@@ -154,7 +154,10 @@ describe('publish command', () => {
     });
     expect(row(bad.id).state).toBe('READY');
     expect(out.text()).toContain('Done: 2 published, 1 scheduled, 0 drafts, 0 processing, 0 failed, 0 unknown.');
-    expect(out.text()).toContain(`[1/3] #${now1.id} ${now1.filename} (Reel) …\n      ✓ published`);
+    expect(out.text()).toMatch(
+      new RegExp(`\\[\\d/3\\] #${now1.id} ${now1.filename} \\(Reel\\) ✓ published \\(\\d+s\\)`),
+    );
+    expect(out.text()).toContain('Uploading 3 video(s), 3 at a time…');
   });
 
   it('respects the Reels quota (Page videos are not counted) and --limit', async () => {
@@ -163,7 +166,8 @@ describe('publish command', () => {
     const v = await add({ publishTarget: 'VIDEO', durationS: 400, mediaInfo: mediaInfo({ durationS: 400 }) });
     await runPublishCommand(ctx({ QUOTA_PER_24H: '1' }), { yes: true }, deps());
     expect([row(a.id).state, row(b.id).state, row(v.id).state]).toEqual(['PUBLISHED', 'HELD', 'PUBLISHED']);
-    expect(row(b.id).nextAttemptAt).toBe(new Date(NOW.getTime() + 24 * H).toISOString());
+    // b was planned while a was still uploading (reserved quota), so it is re-checked in an hour
+    expect(row(b.id).nextAttemptAt).toBe(new Date(NOW.getTime() + H).toISOString());
 
     const c = await add();
     const d = await add();
@@ -189,12 +193,74 @@ describe('publish command', () => {
     const a = await add();
     const b = await add();
     fb.fail.reelStart.push(graphError(190, 'Error validating access token'));
-    const { report, code } = await runPublishCommand(ctx(), { yes: true }, deps());
+    const { report, code } = await runPublishCommand(ctx(), { yes: true, concurrency: '1' }, deps());
     expect(code).toBe(1);
     expect(report.stopped?.reason).toBe('fatal');
     expect([row(a.id).state, row(b.id).state]).toEqual(['READY', 'READY']);
     expect(fb.starts()).toBe(1);
     expect(out.text()).toContain('reel-cli facebook verify');
+  });
+
+  it('uploads several videos in parallel and never exceeds the Reels quota', async () => {
+    fb = fakeFacebookVideos({ latencyMs: 15 });
+    const reels = [];
+    for (let i = 0; i < 6; i++) reels.push(await add());
+    const vids = [];
+    for (let i = 0; i < 3; i++)
+      vids.push(await add({ publishTarget: 'VIDEO', durationS: 400, mediaInfo: mediaInfo({ durationS: 400 }) }));
+    const { code } = await runPublishCommand(ctx({ QUOTA_PER_24H: '4' }), { yes: true, concurrency: '3' }, deps());
+    expect(code).toBe(0);
+    expect(fb.maxInFlight()).toBeGreaterThan(1);
+    expect(fb.maxInFlight()).toBeLessThanOrEqual(3);
+    const states = reels.map((r) => row(r.id).state);
+    expect(states.filter((s) => s === 'PUBLISHED')).toHaveLength(4); // quota 4, even though uploads overlapped
+    expect(states.filter((s) => s === 'HELD')).toHaveLength(2);
+    expect(vids.map((v) => row(v.id).state)).toEqual(['PUBLISHED', 'PUBLISHED', 'PUBLISHED']);
+  });
+
+  it('a fatal error while uploading in parallel lets running uploads finish but starts no new ones', async () => {
+    fb = fakeFacebookVideos({ latencyMs: 15 });
+    const all = [];
+    for (let i = 0; i < 6; i++) all.push(await add());
+    fb.fail.reelStart.push(graphError(190, 'Error validating access token'));
+    const { report, code } = await runPublishCommand(ctx(), { yes: true, concurrency: '2' }, deps());
+    expect(code).toBe(1);
+    expect(report.stopped?.reason).toBe('fatal');
+    expect(fb.starts()).toBeLessThanOrEqual(3); // the failing one, the one already running, at most one more in the gap
+    expect(all.map((v) => row(v.id).state).filter((s) => s === 'READY').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('scheduled videos are not waited for by default; POST_NOW is', async () => {
+    fb = fakeFacebookVideos({ processingPolls: 1 });
+    const now1 = await add();
+    const sched = await add({ action: 'SCHEDULE', scheduledAt: new Date(clock + 5 * H).toISOString() });
+    await runPublishCommand(ctx(), { yes: true, concurrency: '1' }, deps());
+    expect(row(now1.id).state).toBe('PUBLISHED'); // waited through processing
+    expect(row(sched.id).state).toBe('PROCESSING'); // one quick check, confirmed later
+    expect(out.text()).toContain('run `reel-cli reconcile` in a few minutes');
+    await runReconcileCommand(ctx(), {}, deps());
+    expect(row(sched.id).state).toBe('SCHEDULED');
+  });
+
+  it('--wait also waits for scheduled videos; --no-wait never waits', async () => {
+    fb = fakeFacebookVideos({ processingPolls: 2 });
+    const a = await add({ action: 'SCHEDULE', scheduledAt: new Date(clock + 5 * H).toISOString() });
+    await runPublishCommand(ctx(), { yes: true, wait: '60' }, deps());
+    expect(row(a.id).state).toBe('SCHEDULED');
+    const b = await add();
+    await runPublishCommand(ctx(), { yes: true, wait: false }, deps());
+    expect(row(b.id).state).toBe('PROCESSING');
+  });
+
+  it('the dry run counts the Reels quota down like a real run', async () => {
+    for (let i = 0; i < 3; i++) await add();
+    await runPublishCommand(ctx({ QUOTA_PER_24H: '2' }), { dryRun: true }, deps());
+    expect(out.text()).toContain('Publish now: 2');
+    expect(out.text()).toMatch(/Hold \(not sent yet\): 1\n.*Reels 24h quota reached/);
+  });
+
+  it('rejects an invalid --concurrency', async () => {
+    await expect(runPublishCommand(ctx(), { dryRun: true, concurrency: '9' }, deps())).rejects.toThrow(/--concurrency/);
   });
 
   it('refuses to publish while paused; resume clears it', async () => {

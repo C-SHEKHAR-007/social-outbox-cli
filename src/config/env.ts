@@ -27,6 +27,7 @@ const EnvSchema = z.object({
   VIDEO_SLOTS: z.string().refine(isSlotList, SLOT_MESSAGE).default('12:00,18:00'),
   REEL_MAX_DURATION_S: z.coerce.number().int().min(3).max(3600).default(90),
   MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(3),
+  PUBLISH_CONCURRENCY: z.coerce.number().int().min(1).max(5).default(3),
   WORKER_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
   TIMEZONE: z
     .string()
@@ -61,6 +62,8 @@ export interface AppConfig {
     /** Default daily posting times per target (HH:mm, local). Empty = do not auto-schedule. */
     slots: Record<PublishTarget, string[]>;
     maxRetries: number;
+    /** Videos uploaded in parallel by `publish`. */
+    concurrency: number;
     workerIntervalSeconds: number;
     timezone: string;
   };
@@ -98,6 +101,7 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
       reelMaxDurationS: e.REEL_MAX_DURATION_S,
       slots: { REEL: parseSlots(e.REEL_SLOTS) ?? [], VIDEO: parseSlots(e.VIDEO_SLOTS) ?? [] },
       maxRetries: e.MAX_RETRIES,
+      concurrency: e.PUBLISH_CONCURRENCY,
       workerIntervalSeconds: e.WORKER_INTERVAL_SECONDS,
       timezone: e.TIMEZONE,
     },
