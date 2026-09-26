@@ -8,6 +8,8 @@ export const VIDEO_STATES = [
   'PROCESSING',
   'SCHEDULED',
   'PUBLISHED',
+  /** Uploaded as a private draft (`publish --draft`); `retry` makes it publishable again. */
+  'DRAFT',
   'FAILED',
   'SKIPPED',
 ] as const;
@@ -40,4 +42,5 @@ export const SUBMITTED_STATES: readonly VideoState[] = [
   'PROCESSING',
   'SCHEDULED',
   'PUBLISHED',
+  'DRAFT',
 ];

@@ -21,6 +21,7 @@ function render(r: StatusReport, timezone: string, print: (line?: string) => voi
     ['In progress', s.UPLOADING + s.FINISHING + s.PROCESSING],
     ['Scheduled', s.SCHEDULED],
     ['Published', s.PUBLISHED],
+    ['Drafts', s.DRAFT],
     ['Failed', s.FAILED],
     ['Skipped', s.SKIPPED],
   ];
