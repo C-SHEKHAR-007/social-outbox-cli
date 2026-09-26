@@ -7,6 +7,7 @@ import { runExport } from './commands/export.js';
 import { runFacebookLogin, runFacebookLogout, runFacebookPages, runFacebookVerify } from './commands/facebook.js';
 import { runImport } from './commands/import.js';
 import { runInit } from './commands/init.js';
+import { runPublishCommand, runReconcileCommand, runResume, runRetry } from './commands/publish.js';
 import { runRecheck } from './commands/recheck.js';
 import { runScan } from './commands/scan.js';
 import { runSchedule, type ScheduleCommandOptions } from './commands/schedule.js';
@@ -120,6 +121,56 @@ program
   .description('show counts by state and target, quota usage, upcoming and failed videos')
   .action(() => {
     runStatus(workspace());
+  });
+
+program
+  .command('publish')
+  .description('upload READY videos to Facebook: POST_NOW now, SCHEDULE natively (asks for confirmation)')
+  .option('--ids <ids>', 'only these video ids, e.g. 1,2,5-8')
+  .option('--limit <n>', 'submit at most n videos this run')
+  .option('--target <target>', 'reel | video | all', 'all')
+  .option('--draft', 'upload as private drafts instead (testing; needs --ids)')
+  .option('--dry-run', 'show the plan without sending anything')
+  .option('-y, --yes', 'do not ask for confirmation')
+  .option('--wait <seconds>', 'how long to wait for Facebook processing (default 120)')
+  .option('--no-wait', 'do not wait for processing (reconcile picks it up later)')
+  .action(
+    async (options: {
+      ids?: string;
+      limit?: string;
+      target?: string;
+      draft?: boolean;
+      dryRun?: boolean;
+      yes?: boolean;
+      wait?: string | false;
+    }) => {
+      process.exitCode = (await runPublishCommand(workspace(), { ...options, ids: parseIds(options.ids) })).code;
+    },
+  );
+
+program
+  .command('reconcile')
+  .description('ask Facebook about videos whose outcome is pending or unknown (never re-posts)')
+  .option('--ids <ids>', 'only these video ids')
+  .action(async (options: { ids?: string }) => {
+    await runReconcileCommand(workspace(), { ids: parseIds(options.ids) });
+  });
+
+program
+  .command('retry')
+  .description('make FAILED videos (and with --drafts, DRAFT videos) publishable again')
+  .option('--ids <ids>', 'only these video ids')
+  .option('--drafts', 'also reset videos uploaded as drafts')
+  .option('--dry-run', 'show what would be reset')
+  .action((options: { ids?: string; drafts?: boolean; dryRun?: boolean }) => {
+    runRetry(workspace(), { ...options, ids: parseIds(options.ids) });
+  });
+
+program
+  .command('resume')
+  .description('resume publishing after it was paused by Facebook error 368')
+  .action(() => {
+    runResume(workspace());
   });
 
 const facebook = program.command('facebook').description('connect a Facebook Page (official browser login)');

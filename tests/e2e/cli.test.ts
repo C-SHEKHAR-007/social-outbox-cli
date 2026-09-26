@@ -34,6 +34,11 @@ describe('reel-cli binary', () => {
       'validate',
       'show',
       'status',
+      'publish',
+      'reconcile',
+      'retry',
+      'resume',
+      'facebook',
     ]) {
       expect(help.stdout).toContain(cmd);
     }

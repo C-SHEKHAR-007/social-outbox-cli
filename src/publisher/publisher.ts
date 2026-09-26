@@ -82,7 +82,9 @@ export async function publishOne(
   decision: SubmitDecision,
 ): Promise<PublishOutcome> {
   const { db } = deps;
-  if (!claimVideo(db, videoId, deps.owner, deps.now(), CLAIMABLE)) {
+  // Drafts are test uploads and may be made from NEW videos that have no action yet.
+  const claimable = decision.kind === 'draft' ? [...CLAIMABLE, 'NEW' as const] : CLAIMABLE;
+  if (!claimVideo(db, videoId, deps.owner, deps.now(), claimable)) {
     return { videoId, result: 'skipped', message: 'locked by another run or no longer publishable' };
   }
   try {
