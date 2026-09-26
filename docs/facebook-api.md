@@ -133,16 +133,22 @@ Paste the JSON responses to Claude (**remove the token** if it appears anywhere;
 
 ## 6. Findings
 
-| #   | Question                                                                   | Answer                                                                                         | Evidence |
-| --- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------- |
-| Q1  | Does SCHEDULED count against 30/24h at creation or at go-live?             | _TBD (assume creation)_                                                                        |          |
-| Q2  | Can a Development-mode app with admin post to own Page without App Review? | _TBD_                                                                                          |          |
-| Q3  | Does FINISH return `post_id`?                                              | _TBD_                                                                                          |          |
-| Q4  | Can a scheduled Reel be deleted/rescheduled?                               | _TBD_                                                                                          |          |
-| Q5  | Max `description` length / hashtag count                                   | _TBD_                                                                                          |          |
-| Q6  | How does a copyright block appear in `status`?                             | _TBD_                                                                                          |          |
-| Q7  | Does `video_reels` accept videos > 90 s (e.g. 7 min)?                      | _TBD. Long videos go out as Page videos either way; a yes lets us raise `REEL_MAX_DURATION_S`_ |          |
-| Q8  | Page video (`/videos`) rate limits; do they appear in the Reels tab?       | _TBD_                                                                                          |          |
+| #   | Question                                                                   | Answer                                                                                                                                     | Evidence                                         |
+| --- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| Q1  | Does SCHEDULED count against 30/24h at creation or at go-live?             | _TBD (assume creation)_                                                                                                                    |                                                  |
+| Q2  | Can a Development-mode app with admin post to own Page without App Review? | **Yes.** App "Reel Publisher" in Development mode, use case _Manage everything on your Page_, permissions added (not submitted for review) | Draft Reel + 2 scheduled Page videos, 2026-09-27 |
+| Q3  | Does FINISH return `post_id`?                                              | **Yes** for Reels (`{success:true, post_id:"…"}`)                                                                                          | Video_711 draft, post id 122104900455484727      |
+| Q4  | Can a scheduled Reel be deleted/rescheduled?                               | _TBD_                                                                                                                                      |                                                  |
+| Q5  | Max `description` length / hashtag count                                   | _TBD_                                                                                                                                      |                                                  |
+| Q6  | How does a copyright block appear in `status`?                             | _TBD_                                                                                                                                      |                                                  |
+| Q7  | Does `video_reels` accept videos > 90 s (e.g. 7 min)?                      | _TBD. Long videos go out as Page videos either way; a yes lets us raise `REEL_MAX_DURATION_S`_                                             |                                                  |
+| Q8  | Page video (`/videos`) rate limits; do they appear in the Reels tab?       | Page videos get a **`/reel/…` permalink** and report `publishing_phase.publish_status` like Reels. Rate limit still unknown                | Video_116 / Video_117, 2026-09-27                |
+
+### Observed live responses (2026-09-27)
+
+- **Status phases:** `publishing_phase.publish_time` is an **ISO string** (`"2026-09-26T21:30:00+0000"`), not a Unix number. Earlier builds rejected it and wrongly marked a scheduled video FAILED (fixed in `fix(publisher): parse ISO publish_time…`).
+- A scheduled Page video returns `published: false`, `publishing_phase: { status: "complete", publish_status: "scheduled" }` and a `/reel/{id}/` permalink.
+- A 22 s, 4.7 MB VP9/HE-AAC Reel uploaded in about 2 s and finished processing about 24 s after FINISH. A 26.7 MB Page video was sent in 1 MB chunks (Facebook's choice) in about 45 s.
 
 ## 7. Endpoints used by reel-cli
 
