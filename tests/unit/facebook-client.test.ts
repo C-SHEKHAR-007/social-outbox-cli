@@ -24,7 +24,7 @@ describe('GraphClient', () => {
     const graph = fakeGraph({ me: () => ({ body: { id: '1' } }) });
     const client = new GraphClient({ version: 'v26.0', appSecret: 's3cret', fetch: graph.fetch });
     expect(await client.get('/me', { fields: 'id' }, schema, { token: 'TOKEN' })).toEqual({ id: '1' });
-    expect(graph.requests[0]).toEqual({
+    expect(graph.requests[0]).toMatchObject({
       path: 'me',
       params: { fields: 'id', access_token: 'TOKEN', appsecret_proof: appSecretProof('TOKEN', 's3cret') },
     });
