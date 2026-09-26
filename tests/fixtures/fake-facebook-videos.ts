@@ -139,6 +139,8 @@ export function fakeFacebookVideos(
     if (!v.finished) {
       return {
         id,
+        // Real Facebook reports published: true on unfinished uploads (default flag).
+        ...(v.kind === 'video' ? { published: true } : {}),
         status: {
           video_status: uploadDone ? 'upload_complete' : 'uploading',
           uploading_phase: { status: uploadDone ? 'complete' : 'in_progress', bytes_transferred: v.bytes },

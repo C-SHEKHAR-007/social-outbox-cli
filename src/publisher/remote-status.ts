@@ -54,14 +54,18 @@ export function interpretStatus(s: VideoStatus): RemoteState {
     case 'draft':
       return { ...base, outcome: 'draft' };
   }
-  if (s.published === true) return { ...base, outcome: 'published' };
-
-  if (upload?.status && upload.status !== 'complete') return { ...base, outcome: 'uploading' };
+  // Upload state first: Facebook reports `published: true` as a default flag even on an unfinished
+  // upload (verified 2026-09-27), so that flag alone never means the video is live.
+  if (st.video_status === 'uploading' || (upload?.status && upload.status !== 'complete')) {
+    return { ...base, outcome: 'uploading' };
+  }
   const notStarted = (p?: { status?: string }) => !p?.status || p.status === 'not_started';
   if (st.video_status === 'upload_complete' && notStarted(processing) && notStarted(publishing)) {
     return { ...base, outcome: 'uploaded' };
   }
-  if (s.published === false && processing?.status === 'complete') return { ...base, outcome: 'unpublished' };
+  const processed = processing?.status === 'complete' || st.video_status === 'ready';
+  if (s.published === true && processed) return { ...base, outcome: 'published' };
+  if (s.published === false && processed) return { ...base, outcome: 'unpublished' };
   return { ...base, outcome: 'processing' };
 }
 

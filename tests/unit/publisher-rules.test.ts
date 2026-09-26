@@ -134,6 +134,27 @@ describe('interpretStatus', () => {
     });
   });
 
+  it('an unfinished upload is "uploading" even though Facebook sets published: true (live response, 2026-09-27)', () => {
+    const live = {
+      status: {
+        video_status: 'uploading',
+        uploading_phase: { status: 'in_progress' },
+        processing_phase: { status: 'not_started' },
+        publishing_phase: { status: 'not_started' },
+      },
+      permalink_url: '/122104922517484727/videos/2289186985243211',
+      published: true,
+      id: '2289186985243211',
+    };
+    expect(interpretStatus(live).outcome).toBe('uploading');
+    expect(
+      interpretStatus({
+        published: true,
+        status: { video_status: 'processing', processing_phase: { status: 'in_progress' } },
+      }).outcome,
+    ).toBe('processing');
+  });
+
   it('Page videos: published flag and unpublished-but-processed', () => {
     expect(interpretStatus({ published: true, status: { video_status: 'ready' } }).outcome).toBe('published');
     expect(

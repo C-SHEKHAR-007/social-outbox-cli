@@ -310,6 +310,20 @@ describe('publisher', () => {
       expect(row(v.id).state).toBe('SCHEDULED');
     });
 
+    it('an interrupted Page video upload is re-uploaded, not mistaken for published', async () => {
+      const at = new Date(clock + 5 * 3_600_000);
+      const v = await video(1000, { publishTarget: 'VIDEO', action: 'SCHEDULE', scheduledAt: at.toISOString() });
+      fb.fail.videoTransfer.push(graphError(100, 'boom')); // first run dies after START
+      h.db.update(videos).set({ state: 'READY' }).where(eq(videos.id, v.id)).run();
+      await publishOne(deps(), v.id, { kind: 'schedule', at });
+      // simulate the crash state: START done, row left UPLOADING with the stale Facebook id
+      h.db.update(videos).set({ state: 'UPLOADING', lastError: null }).where(eq(videos.id, v.id)).run();
+      const out = await publishOne(deps(), v.id, { kind: 'schedule', at });
+      expect(out.result).toBe('scheduled');
+      expect(fb.starts()).toBe(2); // a fresh upload session
+      expect(row(v.id)).toMatchObject({ state: 'SCHEDULED', fbVideoId: 'V2', bytesUploaded: 1000 });
+    });
+
     it('retries a failed chunk in the same session', async () => {
       const v = await video(1000, { publishTarget: 'VIDEO' });
       fb.fail.videoTransfer.push('network-error');
