@@ -15,7 +15,7 @@ Full design: [`docs/plan.md`](docs/plan.md). Facebook API notes: [`docs/facebook
 | 4     | Schedule planner                                                                  | ✅ done                                                    |
 | 5     | AI captions (whisper + Ollama)                                                    | next                                                       |
 | 6     | Facebook auth: browser login, keychain storage, verify                            | ✅ done (early)                                            |
-| 7     | Publisher                                                                         |                                                            |
+| 7     | Publisher: Reels + Page videos, publish/reconcile/retry/resume                    | ✅ done (live Facebook test pending)                       |
 | 8     | Worker                                                                            |                                                            |
 | 9     | Hardening, normalize                                                              |                                                            |
 
@@ -43,22 +43,26 @@ The **workspace** is the directory you run `reel-cli` in: `.env`, `data/reels.db
 
 ## Commands (implemented so far)
 
-| Command                                                   | Description                                                                                                                                                       |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `reel-cli init`                                           | Create workspace folders, `.env` and `config/page-profile.yaml` from templates, and the database. Safe to rerun: never overwrites existing files.                 |
-| `reel-cli doctor`                                         | Check Node, config, ffmpeg/ffprobe, database, Ollama + model, whisper, Facebook config. Exit code 1 if a required check fails.                                    |
-| `reel-cli scan <dir> [--dry-run]`                         | Recursively find `.mp4/.mov/.webm/.m4v` files, hash them (SHA-256), read metadata with ffprobe, check them against Meta's Reel specs and add new ones. See below. |
-| `reel-cli recheck [--dry-run]`                            | Recompute each video's publish target (Reel vs Page video) and spec results, e.g. after changing `REEL_MAX_DURATION_S`.                                           |
-| `reel-cli schedule [options] [--apply]`                   | Auto-assign `scheduled_at` using daily time slots, separately for Reels and Page videos. Preview unless `--apply`. See below.                                     |
-| `reel-cli export [--out file] [--all]`                    | Write videos to `exports/reels.csv` for editing (published reels excluded unless `--all`). The previous file is kept as `.bak`.                                   |
-| `reel-cli import <csv> [--dry-run] [--force] [--partial]` | Validate and apply CSV edits. All-or-nothing by default. Exit code 1 if any row is invalid.                                                                       |
-| `reel-cli validate [--ids 1,2,5-8]`                       | Check READY videos (or the given ids) can be published. Exit code 1 on any error.                                                                                 |
-| `reel-cli show <id>`                                      | Everything about one video: file, media, spec issues, description, publishing state, attempt history.                                                             |
-| `reel-cli facebook login`                                 | Log in through your browser (official Facebook Login) and store the Page token in the OS keychain. See below.                                                     |
-| `reel-cli facebook pages [--select id]`                   | List the Pages you manage or switch Page.                                                                                                                         |
-| `reel-cli facebook verify`                                | Check that the Page token is valid, never expires, and has the required permissions.                                                                              |
-| `reel-cli facebook logout`                                | Remove stored tokens.                                                                                                                                             |
-| `reel-cli status`                                         | Counts by state, 24h quota usage, upcoming scheduled reels, failures, publishing-paused flag.                                                                     |
+| Command                                                            | Description                                                                                                                                                       |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reel-cli init`                                                    | Create workspace folders, `.env` and `config/page-profile.yaml` from templates, and the database. Safe to rerun: never overwrites existing files.                 |
+| `reel-cli doctor`                                                  | Check Node, config, ffmpeg/ffprobe, database, Ollama + model, whisper, Facebook config. Exit code 1 if a required check fails.                                    |
+| `reel-cli scan <dir> [--dry-run]`                                  | Recursively find `.mp4/.mov/.webm/.m4v` files, hash them (SHA-256), read metadata with ffprobe, check them against Meta's Reel specs and add new ones. See below. |
+| `reel-cli recheck [--dry-run]`                                     | Recompute each video's publish target (Reel vs Page video) and spec results, e.g. after changing `REEL_MAX_DURATION_S`.                                           |
+| `reel-cli schedule [options] [--apply]`                            | Auto-assign `scheduled_at` using daily time slots, separately for Reels and Page videos. Preview unless `--apply`. See below.                                     |
+| `reel-cli export [--out file] [--all]`                             | Write videos to `exports/reels.csv` for editing (published reels excluded unless `--all`). The previous file is kept as `.bak`.                                   |
+| `reel-cli import <csv> [--dry-run] [--force] [--partial]`          | Validate and apply CSV edits. All-or-nothing by default. Exit code 1 if any row is invalid.                                                                       |
+| `reel-cli validate [--ids 1,2,5-8]`                                | Check READY videos (or the given ids) can be published. Exit code 1 on any error.                                                                                 |
+| `reel-cli show <id>`                                               | Everything about one video: file, media, spec issues, description, publishing state, attempt history.                                                             |
+| `reel-cli publish [--dry-run] [--draft] [--ids] [--limit] [--yes]` | Upload READY videos: POST_NOW now, SCHEDULE natively on Facebook. Shows the plan and asks for confirmation. See below.                                            |
+| `reel-cli reconcile`                                               | Ask Facebook about videos whose outcome is pending or unknown. Never re-posts.                                                                                    |
+| `reel-cli retry [--ids] [--drafts]`                                | Make FAILED (and DRAFT) videos publishable again.                                                                                                                 |
+| `reel-cli resume`                                                  | Resume publishing after Facebook error 368 paused it.                                                                                                             |
+| `reel-cli facebook login`                                          | Log in through your browser (official Facebook Login) and store the Page token in the OS keychain. See below.                                                     |
+| `reel-cli facebook pages [--select id]`                            | List the Pages you manage or switch Page.                                                                                                                         |
+| `reel-cli facebook verify`                                         | Check that the Page token is valid, never expires, and has the required permissions.                                                                              |
+| `reel-cli facebook logout`                                         | Remove stored tokens.                                                                                                                                             |
+| `reel-cli status`                                                  | Counts by state, 24h quota usage, upcoming scheduled reels, failures, publishing-paused flag.                                                                     |
 
 ## Scanning
 
@@ -164,6 +168,32 @@ reel-cli facebook verify
 ```
 
 The Page token (no expiry) is stored in the OS keychain, never in files you commit, CSVs or logs. Posting via browser session cookies is intentionally not supported (against Meta's terms; risks Page restrictions).
+
+## Publishing
+
+```bash
+reel-cli publish --dry-run                 # the plan: publish now / schedule / hold / not publishable
+reel-cli publish --ids 219 --draft         # first test: a private draft (see it in Meta Business Suite)
+reel-cli publish                           # real run; asks "Publish/schedule N video(s) on "Page"? [y/N]"
+reel-cli publish --limit 5 --target reel   # a few at a time
+reel-cli reconcile                         # settle anything still processing or unknown
+```
+
+How a video is published:
+
+- **Reels** (≤ 90 s): `POST /{page}/video_reels` start → upload bytes to `rupload.facebook.com` → finish with `PUBLISHED`, `SCHEDULED` (10 min to 29 days ahead) or `DRAFT` → poll status until Facebook finishes processing.
+- **Page videos** (longer): chunked upload on `graph-video.facebook.com/{page}/videos` → finish with `published=true`, or scheduled up to 6 months ahead.
+- Scheduled videos beyond Facebook's window are **held** locally (state HELD) and submitted later.
+- Reels never exceed `QUOTA_PER_24H` per rolling 24 h. Over-quota Reels are held until a slot frees up. Page videos are not counted.
+
+Safety (no double posts):
+
+- The file is re-hashed before upload; a changed file is refused.
+- Facebook's `video_id` is saved **before** any bytes are sent, and the state is `FINISHING` **before** the final call. If that call's result is unknown (crash, timeout), it is never resent: `reconcile` asks Facebook what happened.
+- A crashed upload resumes: Reels continue from the byte offset Facebook reports; Page videos re-upload (their upload sessions can't be resumed, and nothing is public before finish).
+- Lease locks stop two runs from publishing the same video.
+- Error handling: token or permission errors stop the run and leave videos untouched. Error 368 **pauses** all publishing (`reel-cli resume` after review). Rate limits hold videos for an hour. Network errors and 5xx retry with backoff (5 s / 15 s / 45 s, `MAX_RETRIES`). Invalid requests fail only that video (`reel-cli retry`).
+- Every step is recorded: `reel-cli show <id>` lists the attempt history.
 
 ## Configuration
 

@@ -570,9 +570,17 @@ TS project, Commander, config (Zod), pino, Drizzle schema + migrations, `init`, 
 
 GraphClient (versioned, typed errors, redaction), `facebook login`, `facebook pages`, `facebook verify`, keychain storage, `doctor` token check.
 
-### Phase 7: Publisher
+### Phase 7: Publisher (implemented 2026-09-27)
 
-Two upload flows sharing one state machine and the same idempotency rules: `ReelPublisher` (`/video_reels` + rupload) and `PageVideoPublisher` (`/videos` chunked upload; `video_id` from `start` is saved before any transfer, exactly like Reels). `publish --dry-run`, then real publishing: START/TRANSFER (resumable)/FINISH/VERIFY, idempotency rules §7.1, error classification §2.6, quota tracker, attempt history, `retry`, `reconcile`. **Check:** crash-injection integration tests pass; one real DRAFT, then one real PUBLISHED on the test Page.
+- `src/facebook/video-api.ts`: typed Reel (start / rupload transfer / finish) and chunked Page video (start / transfer / finish) calls and video status. `src/facebook/errors.ts` classifies errors as transient, rate_limit, fatal, pause or permanent, and tracks whether Facebook answered at all.
+- `src/publisher/`: `decidePublish` (now / native schedule / draft / hold / skip), `interpretStatus` (published / scheduled / draft / uploaded / processing / failed), leases, the attempt log, `publishOne` / `reconcileOne`, and `runPublish`.
+- CLI: `publish` (plan, then confirm; `--dry-run`, `--draft`, `--ids`, `--limit`, `--target`, `--wait`, `--yes`), `reconcile`, `retry [--drafts]`, `resume`.
+- Decisions made while implementing:
+  - New state **DRAFT** for private test uploads (`--draft`, needs `--ids`, allowed on NEW videos). Drafts count as submitted; `retry --drafts` makes them publishable again (the Facebook copy stays and can be deleted in Meta Business Suite).
+  - Page video uploads interrupted by a crash **restart** instead of resuming: chunked sessions can't be resumed across runs, and nothing is public before finish.
+  - The quota is counted at finish time for Reels, including drafts (conservative until Q1 is answered).
+  - `publish` reconciles FINISHING, PROCESSING and past-due SCHEDULED videos before submitting new ones.
+- **Checked:** 294 tests, including crash and network-drop injection on a stateful fake of both upload flows. **Still to do on the real Page:** one DRAFT (`reel-cli publish --ids <id> --draft`), then one PUBLISHED, then one long Page video; update §2.7 with what Facebook actually returns.
 
 ### Phase 8: Worker
 
