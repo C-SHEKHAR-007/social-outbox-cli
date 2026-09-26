@@ -323,6 +323,41 @@ describe('publisher', () => {
     });
   });
 
+  describe('after FINISH, our-side errors never fail a video', () => {
+    it('an unreadable status after FINISH leaves the video PROCESSING (not FAILED), reconcile settles it', async () => {
+      const at = new Date(clock + 5 * 3_600_000);
+      const v = await video(900, { publishTarget: 'VIDEO', action: 'SCHEDULE', scheduledAt: at.toISOString() });
+      fb.fail.status.push({ status: 200, body: { status: 'not-an-object' } }); // unparseable response
+      const out = await publishOne(deps(), v.id, { kind: 'schedule', at });
+      expect(out.result).toBe('processing');
+      expect(row(v.id).state).toBe('PROCESSING');
+      expect(row(v.id).lastError).toContain('could not read the status');
+      expect((await reconcileOne(deps(), v.id)).result).toBe('scheduled');
+      expect(row(v.id).state).toBe('SCHEDULED');
+      expect(fb.starts()).toBe(1);
+      expect(fb.finishes()).toBe(1);
+    });
+
+    it('reconcile keeps a SCHEDULED video SCHEDULED when the status cannot be read', async () => {
+      const at = new Date(clock + 3_600_000);
+      const v = await video(500, { action: 'SCHEDULE', scheduledAt: at.toISOString() });
+      await publishOne(deps(), v.id, { kind: 'schedule', at });
+      clock += 2 * 3_600_000;
+      fb.fail.status.push(graphError(100, 'Unsupported get request'));
+      const out = await reconcileOne(deps(), v.id);
+      expect(out.result).toBe('processing');
+      expect(row(v.id).state).toBe('SCHEDULED');
+    });
+
+    it('a revoked token during VERIFY stops the run but keeps the video PROCESSING', async () => {
+      const v = await video(500);
+      fb.fail.status.push(graphError(190, 'Error validating access token'));
+      const out = await publishOne(deps(), v.id, { kind: 'now' });
+      expect(out).toMatchObject({ result: 'processing', stop: 'fatal' });
+      expect(row(v.id).state).toBe('PROCESSING');
+    });
+  });
+
   describe('safety checks', () => {
     it('refuses to upload a file that changed since the scan', async () => {
       const v = await video(500);

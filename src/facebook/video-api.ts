@@ -148,15 +148,31 @@ export async function pageVideoFinish(
 
 // ---------- status (both flows) ----------
 
+/** A number, or a numeric string; anything else becomes undefined instead of failing the whole response. */
+const lenientNumber = z.unknown().transform((v): number | undefined => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : undefined;
+});
+
+/**
+ * Unix seconds. Facebook returns `publish_time` as an ISO string ("2026-09-26T21:30:00+0000") on the
+ * status phases, but as a number elsewhere; accept both.
+ */
+const unixSeconds = z.unknown().transform((v): number | undefined => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v !== 'string' || v.trim() === '') return undefined;
+  if (/^\d+$/.test(v.trim())) return Number(v);
+  const ms = Date.parse(v.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : undefined;
+});
+
 const PhaseSchema = z
   .object({
     status: z.string().optional(),
-    bytes_transferred: z.coerce.number().optional(),
+    bytes_transferred: lenientNumber.optional(),
     publish_status: z.string().optional(),
-    publish_time: z.coerce.number().optional(),
-    errors: z
-      .array(z.object({ code: z.coerce.number().optional(), message: z.string().optional() }).loose())
-      .optional(),
+    publish_time: unixSeconds.optional(),
+    errors: z.array(z.object({ code: lenientNumber.optional(), message: z.string().optional() }).loose()).optional(),
     error: z.object({ message: z.string().optional() }).loose().optional(),
   })
   .loose();

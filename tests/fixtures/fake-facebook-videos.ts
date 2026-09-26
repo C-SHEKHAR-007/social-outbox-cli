@@ -6,7 +6,7 @@ import { fakeGraph, graphError } from './fake-graph.js';
  */
 export const PAGE_ID = '101';
 
-type Injected = ReturnType<typeof graphError> | 'network-error';
+type Injected = { status?: number; body: unknown } | 'network-error';
 
 interface FakeVideo {
   kind: 'reel' | 'video';
@@ -175,7 +175,8 @@ export function fakeFacebookVideos(
         video_status: 'ready',
         uploading_phase: { status: 'complete', bytes_transferred: v.bytes },
         processing_phase: { status: 'complete' },
-        publishing_phase: v.kind === 'reel' ? { status: 'complete', publish_status: v.wants } : { status: 'complete' },
+        // Real Facebook (verified 2026-09-27): Page videos also report publish_status, and publish_time is an ISO string.
+        publishing_phase: { status: 'complete', publish_status: v.wants, publish_time: '2026-09-26T21:30:00+0000' },
       },
     };
   }

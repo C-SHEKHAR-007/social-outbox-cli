@@ -161,6 +161,48 @@ describe('GraphClient POST', () => {
     expect(graph.requests[0]!.params.fields).toBe('status,permalink_url,published');
   });
 
+  it('parses the real Page video status Facebook returned (ISO publish_time, /reel/ permalink)', async () => {
+    // Captured from the live API on 2026-09-27 (Video_116, scheduled for 27 Sep 03:00 IST).
+    const graph = fakeGraph({
+      '1444795684170536': () => ({
+        body: {
+          status: {
+            video_status: 'ready',
+            uploading_phase: { status: 'complete' },
+            processing_phase: { status: 'complete' },
+            publishing_phase: {
+              status: 'complete',
+              publish_status: 'scheduled',
+              publish_time: '2026-09-26T21:30:00+0000',
+            },
+          },
+          permalink_url: '/reel/1444795684170536/',
+          published: false,
+          id: '1444795684170536',
+        },
+      }),
+    });
+    const s = await getVideoStatus(client(graph), '1444795684170536', TOKEN);
+    expect(s.status?.publishing_phase?.publish_time).toBe(Date.parse('2026-09-26T21:30:00Z') / 1000);
+    expect(s.status?.publishing_phase?.publish_status).toBe('scheduled');
+  });
+
+  it('tolerates odd numeric fields instead of rejecting the whole status', async () => {
+    const graph = fakeGraph({
+      V1: () => ({
+        body: {
+          status: {
+            uploading_phase: { status: 'in_progress', bytes_transferred: 'n/a' },
+            publishing_phase: { publish_time: 1790458200 },
+          },
+        },
+      }),
+    });
+    const s = await getVideoStatus(client(graph), 'V1', TOKEN);
+    expect(s.status?.uploading_phase?.bytes_transferred).toBeUndefined();
+    expect(s.status?.publishing_phase?.publish_time).toBe(1790458200);
+  });
+
   it('surfaces network failures as unanswered errors', async () => {
     const graph = fakeGraph({ [`${PAGE}/video_reels`]: () => 'network-error' });
     const err = await reelStart(client(graph), PAGE, TOKEN).catch((e: unknown) => e);

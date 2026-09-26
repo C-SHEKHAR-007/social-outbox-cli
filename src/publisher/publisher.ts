@@ -290,7 +290,12 @@ async function verify(
     try {
       remote = await fetchRemote(deps, fbVideoId);
     } catch (err) {
-      if (classifyError(err) !== 'transient') throw new StepFailure(classifyError(err), err, 'VERIFY');
+      const cls = classifyError(err);
+      if (cls !== 'transient') {
+        // FINISH was accepted, so the video is on Facebook: a problem reading its status must never
+        // mark it FAILED (a retry would post it twice). Leave it PROCESSING for `reconcile`.
+        return keepPending(deps, videoId, 'VERIFY', err, cls);
+      }
       remote = { outcome: 'processing' };
     }
     if (remote.outcome !== 'processing' && remote.outcome !== 'uploaded' && remote.outcome !== 'uploading') {
@@ -430,6 +435,30 @@ function handleFailure(deps: PublisherDeps, videoId: number, err: unknown): Publ
   }
 }
 
+/**
+ * Used after FINISH was accepted (or for reconcile): the status could not be read. The state is left
+ * as it is (PROCESSING/SCHEDULED/FINISHING) so `reconcile` can settle it later; only a token or
+ * permission problem stops the run.
+ */
+function keepPending(
+  deps: PublisherDeps,
+  videoId: number,
+  stepName: AttemptStep,
+  err: unknown,
+  cls: ErrorClass,
+  record = true,
+): PublishOutcome {
+  const { code, message } = describeError(err);
+  if (record)
+    finishAttempt(deps.db, startAttempt(deps.db, videoId, stepName), cls === 'fatal' ? 'fatal' : 'transient', {
+      error: err,
+    });
+  const msg = `${stepName}: could not read the status from Facebook (${message}); run \`reel-cli reconcile\` later`;
+  updateVideo(deps.db, videoId, { lastError: msg, lastErrorCode: code });
+  deps.logger?.warn({ op: 'publish', videoId, step: stepName, cls, error: message }, 'status unreadable, left pending');
+  return { videoId, result: 'processing', message: msg, stop: cls === 'fatal' ? 'fatal' : undefined };
+}
+
 function skip(deps: PublisherDeps, video: Video, reason: string): PublishOutcome {
   updateVideo(deps.db, video.id, { lastError: reason, lastErrorCode: 'PRECHECK' });
   return { videoId: video.id, result: 'skipped', message: reason };
@@ -471,7 +500,14 @@ export async function reconcileOne(deps: PublisherDeps, videoId: number): Promis
       return { videoId, result: 'uploading' };
     }
     const id = video.fbVideoId;
-    const remote = await step(deps, videoId, 'RECONCILE', () => fetchRemote(deps, id));
+    let remote: RemoteState;
+    try {
+      remote = await step(deps, videoId, 'RECONCILE', () => fetchRemote(deps, id));
+    } catch (err) {
+      // Could not read the status: keep the current state (never FAILED because of our side).
+      const cls = err instanceof StepFailure ? err.cls : classifyError(err);
+      return keepPending(deps, videoId, 'RECONCILE', err instanceof StepFailure ? err.original : err, cls, false);
+    }
     if (video.state === 'SCHEDULED' && remote.outcome === 'scheduled') return { videoId, result: 'scheduled' };
     const decision: SubmitDecision | undefined =
       video.action === 'SCHEDULE' && video.scheduledAt
