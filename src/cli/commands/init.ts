@@ -28,7 +28,7 @@ export function runInit(cwd: string, print: (line?: string) => void = console.lo
 
   const templates: Array<[source: string, target: string]> = [
     [join(PACKAGE_ROOT, '.env.example'), '.env'],
-    [join(PACKAGE_ROOT, 'config', 'page-profile.example.yaml'), join('config', 'page-profile.yaml')],
+    [join(PACKAGE_ROOT, 'templates', 'page-profile.example.yaml'), join('config', 'page-profile.yaml')],
   ];
   for (const [source, target] of templates) {
     const full = join(cwd, target);
