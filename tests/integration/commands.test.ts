@@ -88,6 +88,13 @@ describe.skipIf(!HAS_FFMPEG)('CLI commands (workflow)', () => {
     expect(rows.map((r) => r.publish_target)).toEqual(['REEL', 'REEL', 'VIDEO']);
   });
 
+  it('relative paths fall back to the workspace (import exports/reels.csv from another folder)', () => {
+    // process.cwd() is the repo, which has no exports/ folder: the path resolves inside the workspace.
+    const r = runImport(fresh(), 'exports/reels.csv', { dryRun: true });
+    expect(r.code).toBe(0);
+    expect(r.plan.total).toBe(3);
+  });
+
   it('import rejects an invalid CSV as a whole, then applies a valid one', () => {
     editCsv((rows) => {
       rows[0]!.caption = 'First reel';

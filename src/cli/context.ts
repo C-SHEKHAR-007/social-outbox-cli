@@ -5,7 +5,7 @@ import { openDatabase, type Db, type DbHandle } from '../db/client.js';
 import { UserError } from '../utils/errors.js';
 import { createLogger, type Logger } from '../utils/logger.js';
 import { createTokenStore, type TokenStore } from '../facebook/token-store.js';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 export interface AppContext {
   cwd: string;
@@ -68,4 +68,16 @@ export function createContext(opts: {
       }
     },
   };
+}
+
+/**
+ * Resolves a user-given path: absolute as-is; relative first against the folder the command was run
+ * from, then against the workspace (so `reel-cli import exports/reels.csv` works from the project
+ * folder even though exports live in workspace/).
+ */
+export function resolveUserPath(ctx: Pick<AppContext, 'cwd'>, input: string, runFrom = process.cwd()): string {
+  if (isAbsolute(input)) return input;
+  const fromRunDir = resolve(runFrom, input);
+  if (existsSync(fromRunDir)) return fromRunDir;
+  return resolve(ctx.cwd, input);
 }

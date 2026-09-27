@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { UserError } from '../utils/errors.js';
-import { packageVersion } from '../utils/package-root.js';
+import { mkdirSync } from 'node:fs';
+import { resolveWorkspaceRoot } from '../config/paths.js';
+import { PACKAGE_ROOT, packageVersion } from '../utils/package-root.js';
 import { runDoctor } from './commands/doctor.js';
 import { runExport } from './commands/export.js';
 import { runFacebookLogin, runFacebookLogout, runFacebookPages, runFacebookVerify } from './commands/facebook.js';
@@ -17,8 +19,9 @@ import { runValidate } from './commands/validate.js';
 import { createContext } from './context.js';
 import { parseIds } from './ids.js';
 
-/** The workspace is the directory the CLI is run from. */
-const workspace = () => createContext({ cwd: process.cwd() });
+/** Runtime data folder: REEL_WORKSPACE, <project>/workspace when run from the project, else the current folder. */
+const root = resolveWorkspaceRoot(process.cwd(), PACKAGE_ROOT);
+const workspace = () => createContext({ cwd: root });
 
 const program = new Command()
   .name('reel-cli')
@@ -30,14 +33,15 @@ program
   .command('init')
   .description('create workspace folders, .env and page profile templates, and the database')
   .action(() => {
-    runInit(process.cwd());
+    mkdirSync(root, { recursive: true });
+    runInit(root);
   });
 
 program
   .command('doctor')
   .description('check dependencies, configuration, database and credentials')
   .action(async () => {
-    process.exitCode = await runDoctor({ cwd: process.cwd() });
+    process.exitCode = await runDoctor({ cwd: root });
   });
 
 program

@@ -34,7 +34,10 @@ const defaultRun: RunCommand = async (cmd, args) => (await execa(cmd, args, { ti
 export async function runChecks(deps: DoctorDeps): Promise<CheckResult[]> {
   const run = deps.run ?? defaultRun;
   const fetchFn = deps.fetch ?? fetch;
-  const results: CheckResult[] = [checkNode(deps.nodeVersion ?? process.versions.node)];
+  const results: CheckResult[] = [
+    checkNode(deps.nodeVersion ?? process.versions.node),
+    { name: 'workspace', status: 'ok', detail: deps.cwd },
+  ];
 
   let config: AppConfig;
   try {

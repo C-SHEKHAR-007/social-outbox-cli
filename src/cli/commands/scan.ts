@@ -3,7 +3,7 @@ import { relative } from 'node:path';
 import { assertFfprobeAvailable, ffprobe } from '../../media/ffprobe.js';
 import { scanDirectory, type ScanSummary } from '../../scanner/scan-service.js';
 import { UserError } from '../../utils/errors.js';
-import type { AppContext } from '../context.js';
+import { resolveUserPath, type AppContext } from '../context.js';
 
 const MAX_LISTED = 10;
 
@@ -12,7 +12,9 @@ export async function runScan(
   dir: string,
   opts: { dryRun?: boolean; progress?: boolean } = {},
 ): Promise<ScanSummary> {
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new UserError(`Not a directory: ${dir}`);
+  const input = dir;
+  dir = resolveUserPath(ctx, input);
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new UserError(`Not a directory: ${input}`);
   await assertFfprobeAvailable();
 
   return ctx.withDbAsync(async (db) => {

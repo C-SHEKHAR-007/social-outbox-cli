@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig, parseConfig } from '../../src/config/env.js';
-import { resolvePaths } from '../../src/config/paths.js';
+import { resolvePaths, resolveWorkspaceRoot } from '../../src/config/paths.js';
 import { ConfigError } from '../../src/utils/errors.js';
 import { makeTempDir } from '../helpers.js';
 
@@ -83,5 +83,46 @@ describe('resolvePaths', () => {
     expect(resolvePaths('/w', './data/x.db').db).toBe('/w/data/x.db');
     expect(resolvePaths('/w', '/abs/x.db').db).toBe('/abs/x.db');
     expect(resolvePaths('/w', ':memory:').db).toBe(':memory:');
+  });
+});
+
+describe('resolveUserPath', () => {
+  it('prefers the run folder, then the workspace; absolute paths unchanged', async () => {
+    const { resolveUserPath } = await import('../../src/cli/context.js');
+    const run = makeTempDir();
+    const ws = makeTempDir();
+    try {
+      writeFileSync(join(run.dir, 'here.csv'), 'x');
+      expect(resolveUserPath({ cwd: ws.dir }, 'here.csv', run.dir)).toBe(join(run.dir, 'here.csv'));
+      expect(resolveUserPath({ cwd: ws.dir }, 'exports/reels.csv', run.dir)).toBe(join(ws.dir, 'exports/reels.csv'));
+      expect(resolveUserPath({ cwd: ws.dir }, '/abs/file.csv', run.dir)).toBe('/abs/file.csv');
+    } finally {
+      run.cleanup();
+      ws.cleanup();
+    }
+  });
+});
+
+describe('resolveWorkspaceRoot', () => {
+  it('uses <project>/workspace when run from the project folder', () => {
+    const tmp = makeTempDir();
+    try {
+      expect(resolveWorkspaceRoot(tmp.dir, tmp.dir, {})).toBe(join(tmp.dir, 'workspace'));
+      expect(resolveWorkspaceRoot(tmp.dir, `${tmp.dir}/`, {})).toBe(join(tmp.dir, 'workspace')); // trailing slash from import.meta.url
+    } finally {
+      tmp.cleanup();
+    }
+  });
+
+  it('uses the current folder anywhere else (unchanged behaviour)', () => {
+    expect(resolveWorkspaceRoot('/some/other/folder', '/opt/reel-cli', {})).toBe('/some/other/folder');
+  });
+
+  it('REEL_WORKSPACE overrides both (absolute or relative to the current folder)', () => {
+    expect(resolveWorkspaceRoot('/opt/reel-cli', '/opt/reel-cli', { REEL_WORKSPACE: '/data/reels' })).toBe(
+      '/data/reels',
+    );
+    expect(resolveWorkspaceRoot('/home/me', '/opt/reel-cli', { REEL_WORKSPACE: 'mine' })).toBe('/home/me/mine');
+    expect(resolveWorkspaceRoot('/home/me', '/opt/reel-cli', { REEL_WORKSPACE: '  ' })).toBe('/home/me');
   });
 });

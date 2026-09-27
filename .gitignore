@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+# runtime data when reel-cli is run from the project folder (database, logs, exports, .env, page profile)
+workspace/
 data/
 logs/
 exports/

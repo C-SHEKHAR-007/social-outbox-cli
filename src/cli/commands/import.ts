@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { applyImport, planImport, type ImportPlan, type RowRef } from '../../csv/import-service.js';
 import { UserError } from '../../utils/errors.js';
-import type { AppContext } from '../context.js';
+import { resolveUserPath, type AppContext } from '../context.js';
 
 export interface ImportCommandOptions {
   dryRun?: boolean;
@@ -16,9 +16,10 @@ export function runImport(
   opts: ImportCommandOptions = {},
   now = new Date(),
 ): { plan: ImportPlan; applied: boolean; code: number } {
-  if (!existsSync(file)) throw new UserError(`File not found: ${file}`);
+  const path = resolveUserPath(ctx, file);
+  if (!existsSync(path)) throw new UserError(`File not found: ${file}`);
   return ctx.withDb((db) => {
-    const plan = planImport(db, readFileSync(file, 'utf8'), {
+    const plan = planImport(db, readFileSync(path, 'utf8'), {
       timezone: ctx.config.publishing.timezone,
       now,
       force: opts.force ?? false,

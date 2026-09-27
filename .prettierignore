@@ -1,4 +1,5 @@
 dist/
+workspace/
 coverage/
 drizzle/
 node_modules/

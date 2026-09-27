@@ -4,7 +4,7 @@ import prettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'coverage/', 'drizzle/', 'node_modules/'] },
+  { ignores: ['dist/', 'coverage/', 'drizzle/', 'node_modules/', 'workspace/'] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {

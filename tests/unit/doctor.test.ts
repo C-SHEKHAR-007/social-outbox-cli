@@ -107,8 +107,8 @@ describe('runChecks', () => {
       nodeVersion: '20.20.2',
       tokenStore: new MemoryTokenStore(),
     });
-    expect(results.map((r) => r.name)).toEqual(['node', 'config']);
-    expect(results[1]?.status).toBe('fail');
+    expect(results.map((r) => r.name)).toEqual(['node', 'workspace', 'config']);
+    expect(results[2]?.status).toBe('fail');
   });
 });
 
