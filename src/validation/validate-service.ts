@@ -10,7 +10,7 @@ import { isSubmitted } from '../domain/transitions.js';
 import type { VideoState } from '../domain/states.js';
 import { checkSpecFor, TARGET_LABEL } from '../media/publish-target.js';
 import { looksUnchanged, sha256File } from '../scanner/file-identity.js';
-import { quotaUsed } from '../scheduling/quota.js';
+import { quotaUsed, uploadsUsed } from '../scheduling/quota.js';
 import { busiestWindow, MAX_NATIVE_SCHEDULE_MS, MIN_SCHEDULE_LEAD_MS } from '../scheduling/windows.js';
 
 /** Rows validated by default: those the publisher would pick up. */
@@ -145,6 +145,15 @@ function globalChecks(db: Db, rows: Video[], opts: ValidateOptions): ValidationR
   if (toSubmit > remaining) {
     warnings.push(
       `${toSubmit} Reel(s) to submit but only ${remaining} of ${quota} left in the 24h Reels quota; the rest will be held and submitted later`,
+    );
+  }
+
+  const uploadLimit = config.publishing.dailyUploadLimit;
+  const uploadsLeft = Math.max(0, uploadLimit - uploadsUsed(db, now));
+  const allToSubmit = rows.filter((r) => r.action === 'POST_NOW' || r.action === 'SCHEDULE').length;
+  if (allToSubmit > uploadsLeft) {
+    warnings.push(
+      `${allToSubmit} video(s) to upload but only ${uploadsLeft} of ${uploadLimit} uploads left in the last 24h (DAILY_UPLOAD_LIMIT); the rest will be held and uploaded on later runs`,
     );
   }
 

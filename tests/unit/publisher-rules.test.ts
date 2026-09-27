@@ -48,6 +48,19 @@ describe('decidePublish', () => {
     expect(decidePublish(reel({ action: 'SKIP' }), ctx)).toEqual({ kind: 'skip', reason: 'action is SKIP' });
   });
 
+  it('holds everything (Page videos too) when the daily upload limit is used up', () => {
+    const frees = new Date(NOW.getTime() + 5 * H);
+    expect(
+      decidePublish({ ...reel(), publishTarget: 'VIDEO' }, { ...ctx, uploadsLeft: 0, uploadsFreeAt: frees }),
+    ).toEqual({
+      kind: 'hold',
+      reason: 'daily upload limit reached',
+      until: frees,
+    });
+    expect(decidePublish(reel(), { ...ctx, draft: true, uploadsLeft: 0 })).toMatchObject({ kind: 'hold' });
+    expect(decidePublish(reel(), { ...ctx, uploadsLeft: 1 })).toEqual({ kind: 'now' });
+  });
+
   it('holds Reels (not Page videos) when the quota is used up', () => {
     const frees = new Date(NOW.getTime() + 3 * H);
     expect(decidePublish(reel(), { ...ctx, reelQuotaLeft: 0, reelQuotaFreesAt: frees })).toEqual({

@@ -15,7 +15,9 @@ describe('parseConfig', () => {
       reelMaxDurationS: 90,
       slots: { REEL: ['09:00', '14:00', '20:00'], VIDEO: ['12:00', '18:00'] },
       maxRetries: 3,
-      concurrency: 3,
+      concurrency: 1,
+      dailyUploadLimit: 25,
+      minUploadGapSeconds: 120,
       workerIntervalSeconds: 30,
       timezone: 'Asia/Kolkata',
     });

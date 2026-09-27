@@ -3,7 +3,7 @@ import { isPublishingPaused, getAppState } from '../db/app-state.js';
 import type { Db } from '../db/client.js';
 import { videos } from '../db/schema.js';
 import { VIDEO_STATES, type PublishTarget, type VideoState } from '../domain/states.js';
-import { quotaUsed } from '../scheduling/quota.js';
+import { quotaUsed, uploadsUsed } from '../scheduling/quota.js';
 import { toIso } from '../utils/time.js';
 
 export interface StatusReport {
@@ -11,6 +11,7 @@ export interface StatusReport {
   byTarget: Record<PublishTarget, number>;
   byState: Record<VideoState, number>;
   quota: { used: number; limit: number };
+  uploads: { used: number; limit: number };
   paused: { paused: boolean; reason: string | undefined };
   upcoming: Array<{ id: number; filename: string; state: VideoState; target: PublishTarget; scheduledAt: string }>;
   failed: Array<{ id: number; filename: string; error: string }>;
@@ -18,7 +19,10 @@ export interface StatusReport {
 
 const UPCOMING_STATES: VideoState[] = ['READY', 'HELD', 'SCHEDULED'];
 
-export function getStatusReport(db: Db, opts: { now: Date; quotaLimit: number; listLimit?: number }): StatusReport {
+export function getStatusReport(
+  db: Db,
+  opts: { now: Date; quotaLimit: number; uploadLimit?: number; listLimit?: number },
+): StatusReport {
   const listLimit = opts.listLimit ?? 10;
   const byState = Object.fromEntries(VIDEO_STATES.map((s) => [s, 0])) as Record<VideoState, number>;
   for (const row of db.select({ state: videos.state, n: count() }).from(videos).groupBy(videos.state).all()) {
@@ -71,6 +75,7 @@ export function getStatusReport(db: Db, opts: { now: Date; quotaLimit: number; l
     byTarget,
     byState,
     quota: { used, limit: opts.quotaLimit },
+    uploads: { used: uploadsUsed(db, opts.now), limit: opts.uploadLimit ?? 25 },
     paused: { paused: isPublishingPaused(db), reason: getAppState(db, 'paused_reason') },
     upcoming,
     failed,

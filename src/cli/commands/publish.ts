@@ -119,11 +119,17 @@ export async function runPublishCommand(
     }
 
     ctx.print();
-    if (limited > 1) ctx.print(`Uploading ${limited} video(s), ${Math.min(concurrency, limited)} at a time…`);
+    const gap = ctx.config.publishing.minUploadGapSeconds;
+    if (limited > 1) {
+      ctx.print(
+        `Uploading ${limited} video(s), ${Math.min(concurrency, limited)} at a time${gap ? `, at least ${gap}s apart` : ''}…`,
+      );
+    }
     let n = 0;
     const startedAt = new Map<number, number>();
     const report = await runPublish(publisher, runOpts, (e) => {
       if (e.type === 'reconciled') ctx.print(`↻ #${e.video.id} ${e.video.filename}: ${describeOutcome(e.outcome)}`);
+      if (e.type === 'waiting') ctx.print(`  … waiting ${e.seconds}s before the next upload (MIN_UPLOAD_GAP_SECONDS)`);
       if (e.type === 'start') startedAt.set(e.video.id, Date.now());
       if (e.type === 'done') {
         n += 1;

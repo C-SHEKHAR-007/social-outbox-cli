@@ -1,4 +1,4 @@
-import { and, count, eq, gt, min } from 'drizzle-orm';
+import { and, count, eq, gt, max, min } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { videos } from '../db/schema.js';
 import { toIso } from '../utils/time.js';
@@ -29,4 +29,30 @@ export function quotaFreesAt(db: Db, now: Date): Date | null {
     .where(and(eq(videos.publishTarget, 'REEL'), gt(videos.finishSentAt, since)))
     .get()?.at;
   return oldest ? new Date(Date.parse(oldest) + DAY_MS) : null;
+}
+
+/** Uploads of any kind (Reels, Page videos, drafts) sent to Facebook in the rolling 24h window. */
+export function uploadsUsed(db: Db, now: Date): number {
+  const since = toIso(new Date(now.getTime() - DAY_MS));
+  return db.select({ n: count() }).from(videos).where(gt(videos.finishSentAt, since)).get()?.n ?? 0;
+}
+
+/** When the oldest upload counted in the current window leaves it. */
+export function uploadsFreeAt(db: Db, now: Date): Date | null {
+  const since = toIso(new Date(now.getTime() - DAY_MS));
+  const oldest = db
+    .select({ at: min(videos.finishSentAt) })
+    .from(videos)
+    .where(gt(videos.finishSentAt, since))
+    .get()?.at;
+  return oldest ? new Date(Date.parse(oldest) + DAY_MS) : null;
+}
+
+/** The most recent upload (finish sent), used to keep a gap between uploads across runs. */
+export function lastUploadAt(db: Db): Date | null {
+  const last = db
+    .select({ at: max(videos.finishSentAt) })
+    .from(videos)
+    .get()?.at;
+  return last ? new Date(last) : null;
 }

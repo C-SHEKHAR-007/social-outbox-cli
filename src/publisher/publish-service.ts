@@ -5,7 +5,7 @@ import type { Db } from '../db/client.js';
 import { videos, type Video } from '../db/schema.js';
 import { updateVideo } from '../db/video-repository.js';
 import type { PublishTarget, VideoState } from '../domain/states.js';
-import { quotaFreesAt, quotaUsed } from '../scheduling/quota.js';
+import { lastUploadAt, quotaFreesAt, quotaUsed, uploadsFreeAt, uploadsUsed } from '../scheduling/quota.js';
 import { UserError } from '../utils/errors.js';
 import { toIso } from '../utils/time.js';
 import { validateVideo } from '../validation/validate-service.js';
@@ -41,6 +41,7 @@ export interface PublishReport {
 
 export type PublishEvent =
   | { type: 'reconciled'; outcome: PublishOutcome; video: Video }
+  | { type: 'waiting'; seconds: number }
   | { type: 'start'; video: Video; decision: PlannedDecision }
   | { type: 'done'; video: Video; decision: PlannedDecision; outcome: PublishOutcome };
 
@@ -82,15 +83,18 @@ export async function runPublish(
   // 2. Plan and submit, uploading up to `concurrency` videos at a time.
   const concurrency = opts.dryRun ? 1 : Math.max(1, opts.concurrency ?? 1);
   const running = new Set<Promise<void>>();
-  // Reels decided/in flight in this run but not yet counted by quotaUsed() (finish_sent_at unset).
-  let reservedReels = 0;
+  // Uploads decided/in flight in this run but not yet counted in the DB (finish_sent_at unset).
+  const reserved = { reels: 0, uploads: 0 };
+  // Keep MIN_UPLOAD_GAP_SECONDS between uploads, also across runs.
+  const gapMs = opts.config.publishing.minUploadGapSeconds * 1000;
+  let lastStart = lastUploadAt(db)?.getTime() ?? 0;
   let submitted = 0;
   // Read through a function: finished uploads set report.stopped asynchronously.
   const isStopped = (): boolean => report.stopped !== undefined;
 
   for (const video of findCandidates(db, deps.now(), opts)) {
     if (isStopped()) break;
-    const decision = await plan(db, video, deps.now(), opts, reservedReels);
+    const decision = await plan(db, video, deps.now(), opts, reserved);
     const item: PlanItem = { video, decision };
     report.items.push(item);
     const submits = decision.kind === 'now' || decision.kind === 'schedule' || decision.kind === 'draft';
@@ -106,7 +110,10 @@ export async function runPublish(
         });
       }
       // The dry run counts Reels down too, so its plan matches what a real run would do.
-      if (opts.dryRun && submits && video.publishTarget === 'REEL') reservedReels += 1;
+      if (opts.dryRun && submits) {
+        reserved.uploads += 1;
+        if (video.publishTarget === 'REEL') reserved.reels += 1;
+      }
       continue;
     }
     if (opts.limit !== undefined && submitted >= opts.limit) {
@@ -124,12 +131,22 @@ export async function runPublish(
       continue;
     }
 
+    const waitMs = lastStart + gapMs - deps.now().getTime();
+    if (waitMs > 0) {
+      onEvent({ type: 'waiting', seconds: Math.ceil(waitMs / 1000) });
+      await deps.sleep(waitMs);
+    }
+    lastStart = deps.now().getTime();
+
     submitted += 1;
     const isReel = video.publishTarget === 'REEL';
-    if (isReel) reservedReels += 1;
+    reserved.uploads += 1;
+    if (isReel) reserved.reels += 1;
     onEvent({ type: 'start', video, decision });
     const task: Promise<void> = publishOne(deps, video.id, decision).then((outcome) => {
-      if (isReel) reservedReels -= 1; // from here on quotaUsed() counts it (if FINISH was sent)
+      // From here on the DB counts it (if FINISH was sent).
+      reserved.uploads -= 1;
+      if (isReel) reserved.reels -= 1;
       item.outcome = outcome;
       onEvent({ type: 'done', video, decision, outcome });
       if ((outcome.stop === 'fatal' || outcome.stop === 'pause') && !report.stopped) {
@@ -151,7 +168,7 @@ async function plan(
   video: Video,
   now: Date,
   opts: PublishRunOptions,
-  reservedReels: number,
+  reserved: { reels: number; uploads: number },
 ): Promise<PlannedDecision> {
   if (video.state !== 'UPLOADING') {
     const check = await validateVideo(video, { config: opts.config, now, facebookConnected: true });
@@ -164,8 +181,10 @@ async function plan(
   return decidePublish(video, {
     now,
     draft: opts.draft,
-    reelQuotaLeft: opts.config.publishing.quotaPer24h - used - reservedReels,
+    reelQuotaLeft: opts.config.publishing.quotaPer24h - used - reserved.reels,
     reelQuotaFreesAt: quotaFreesAt(db, now),
+    uploadsLeft: opts.config.publishing.dailyUploadLimit - uploadsUsed(db, now) - reserved.uploads,
+    uploadsFreeAt: uploadsFreeAt(db, now),
   });
 }
 

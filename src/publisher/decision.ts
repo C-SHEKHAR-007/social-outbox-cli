@@ -21,6 +21,9 @@ export interface DecisionContext {
   reelQuotaLeft: number;
   /** When the oldest counted Reel leaves the 24h window (for the hold time). */
   reelQuotaFreesAt?: Date | null;
+  /** Remaining uploads of any kind in the rolling 24h window (DAILY_UPLOAD_LIMIT). */
+  uploadsLeft?: number;
+  uploadsFreeAt?: Date | null;
 }
 
 const HOUR = 60 * 60 * 1000;
@@ -44,6 +47,9 @@ export function decidePublish(v: DecisionInput, ctx: DecisionContext): PublishDe
     decision = { kind: 'schedule', at: new Date(at) };
   } else return { kind: 'skip', reason: v.action === 'SKIP' ? 'action is SKIP' : 'no action set' };
 
+  if (ctx.uploadsLeft !== undefined && ctx.uploadsLeft <= 0) {
+    return { kind: 'hold', reason: 'daily upload limit reached', until: ctx.uploadsFreeAt ?? new Date(now + HOUR) };
+  }
   if (v.publishTarget === 'REEL' && ctx.reelQuotaLeft <= 0) {
     return { kind: 'hold', reason: 'Reels 24h quota reached', until: ctx.reelQuotaFreesAt ?? new Date(now + HOUR) };
   }

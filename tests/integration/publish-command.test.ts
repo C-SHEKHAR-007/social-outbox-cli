@@ -157,7 +157,7 @@ describe('publish command', () => {
     expect(out.text()).toMatch(
       new RegExp(`\\[\\d/3\\] #${now1.id} ${now1.filename} \\(Reel\\) ✓ published \\(\\d+s\\)`),
     );
-    expect(out.text()).toContain('Uploading 3 video(s), 3 at a time…');
+    expect(out.text()).toContain('Uploading 3 video(s), 1 at a time, at least 120s apart…');
   });
 
   it('respects the Reels quota (Page videos are not counted) and --limit', async () => {
@@ -201,6 +201,55 @@ describe('publish command', () => {
     expect(out.text()).toContain('reel-cli facebook verify');
   });
 
+  it('DAILY_UPLOAD_LIMIT counts every upload (Reels and Page videos) and holds the rest', async () => {
+    const reel = await add();
+    const v1 = await add({ publishTarget: 'VIDEO', durationS: 400, mediaInfo: mediaInfo({ durationS: 400 }) });
+    const v2 = await add({ publishTarget: 'VIDEO', durationS: 400, mediaInfo: mediaInfo({ durationS: 400 }) });
+    await runPublishCommand(ctx({ DAILY_UPLOAD_LIMIT: '2' }), { yes: true }, deps());
+    expect([row(reel.id).state, row(v1.id).state, row(v2.id).state]).toEqual(['PUBLISHED', 'PUBLISHED', 'HELD']);
+    expect(row(v2.id).nextAttemptAt).toBe(new Date(NOW.getTime() + 24 * H).toISOString()); // when the 1st upload leaves the window
+  });
+
+  it('uploads already sent in the last 24h (e.g. by an earlier run) count too', async () => {
+    const earlier = await add({ publishTarget: 'VIDEO', durationS: 400, mediaInfo: mediaInfo({ durationS: 400 }) });
+    ctx().withDb((db) =>
+      db
+        .update(videos)
+        .set({ state: 'SCHEDULED', finishSentAt: new Date(clock - 2 * H).toISOString() })
+        .where(eq(videos.id, earlier.id))
+        .run(),
+    );
+    const next = await add();
+    const { report } = await runPublishCommand(ctx({ DAILY_UPLOAD_LIMIT: '1' }), { yes: true }, deps());
+    expect(report.items.find((i) => i.video.id === next.id)?.decision).toMatchObject({
+      kind: 'hold',
+      reason: 'daily upload limit reached',
+    });
+    expect(fb.requests).toHaveLength(0);
+  });
+
+  it('keeps MIN_UPLOAD_GAP_SECONDS between uploads, also after an earlier run', async () => {
+    const a = await add();
+    const b = await add();
+    const c = await add();
+    const start = clock;
+    await runPublishCommand(ctx({ MIN_UPLOAD_GAP_SECONDS: '120' }), { yes: true, ids: [a.id, b.id] }, deps());
+    expect(clock - start).toBeGreaterThanOrEqual(120_000); // one gap between a and b
+    expect(out.text()).toMatch(/waiting 1[12]\ds before the next upload \(MIN_UPLOAD_GAP_SECONDS\)/);
+    const second = clock;
+    await runPublishCommand(ctx({ MIN_UPLOAD_GAP_SECONDS: '120' }), { yes: true, ids: [c.id] }, deps());
+    expect(clock - second).toBeGreaterThan(0); // waited for the gap after b from the previous run
+    expect(row(c.id).state).toBe('PUBLISHED');
+  });
+
+  it('shows the 24h upload count in status', async () => {
+    await add();
+    await runPublishCommand(ctx(), { yes: true }, deps());
+    const { runStatus } = await import('../../src/cli/commands/status.js');
+    runStatus(ctx(), new Date(clock));
+    expect(out.text()).toContain('Uploads (24h): 1/25 (all videos; DAILY_UPLOAD_LIMIT)');
+  });
+
   it('uploads several videos in parallel and never exceeds the Reels quota', async () => {
     fb = fakeFacebookVideos({ latencyMs: 15 });
     const reels = [];
@@ -208,7 +257,11 @@ describe('publish command', () => {
     const vids = [];
     for (let i = 0; i < 3; i++)
       vids.push(await add({ publishTarget: 'VIDEO', durationS: 400, mediaInfo: mediaInfo({ durationS: 400 }) }));
-    const { code } = await runPublishCommand(ctx({ QUOTA_PER_24H: '4' }), { yes: true, concurrency: '3' }, deps());
+    const { code } = await runPublishCommand(
+      ctx({ QUOTA_PER_24H: '4', MIN_UPLOAD_GAP_SECONDS: '0' }),
+      { yes: true, concurrency: '3' },
+      deps(),
+    );
     expect(code).toBe(0);
     expect(fb.maxInFlight()).toBeGreaterThan(1);
     expect(fb.maxInFlight()).toBeLessThanOrEqual(3);
@@ -223,7 +276,11 @@ describe('publish command', () => {
     const all = [];
     for (let i = 0; i < 6; i++) all.push(await add());
     fb.fail.reelStart.push(graphError(190, 'Error validating access token'));
-    const { report, code } = await runPublishCommand(ctx(), { yes: true, concurrency: '2' }, deps());
+    const { report, code } = await runPublishCommand(
+      ctx({ MIN_UPLOAD_GAP_SECONDS: '0' }),
+      { yes: true, concurrency: '2' },
+      deps(),
+    );
     expect(code).toBe(1);
     expect(report.stopped?.reason).toBe('fatal');
     expect(fb.starts()).toBeLessThanOrEqual(3); // the failing one, the one already running, at most one more in the gap

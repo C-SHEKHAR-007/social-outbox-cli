@@ -50,9 +50,31 @@ describe('classifyError', () => {
   it('describes errors for logs', () => {
     expect(describeError(new FacebookApiError('Bad token', { code: 190, subcode: 463, httpStatus: 400 }))).toEqual({
       code: '190/463',
-      message: 'Bad token',
+      message: 'Bad token (The Facebook token is invalid or expired. Run `reel-cli facebook login`.)',
     });
+    expect(describeError(new FacebookApiError('Something odd', { code: 100, httpStatus: 400 })).message).toBe(
+      'Something odd',
+    );
     expect(describeError(new Error('boom'))).toEqual({ code: null, message: 'boom' });
+  });
+});
+
+describe('Facebook anti-spam block (368/1390008, seen live 2026-09-27)', () => {
+  it('never produces an empty message and explains the block', async () => {
+    // The live response had an empty error message.
+    const graph = fakeGraph({
+      [`${PAGE}/video_reels`]: () => ({
+        status: 400,
+        body: { error: { message: '', code: 368, error_subcode: 1390008, type: 'OAuthException' } },
+      }),
+    });
+    const err = await reelStart(client(graph), PAGE, TOKEN).catch((e: unknown) => e);
+    expect(classifyError(err)).toBe('pause');
+    const { code, message } = describeError(err);
+    expect(code).toBe('368/1390008');
+    expect(message).toBe(
+      'Facebook error 368/1390008 (HTTP 400) (Facebook temporarily blocked uploads for posting too fast (anti-spam). Wait at least 24 hours, then publish in small batches.)',
+    );
   });
 });
 

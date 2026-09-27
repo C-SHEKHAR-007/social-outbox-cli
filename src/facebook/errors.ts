@@ -34,11 +34,29 @@ export function wasAnswered(err: unknown): boolean {
   return err instanceof FacebookApiError && err.details.httpStatus !== undefined;
 }
 
+/** Plain-language explanation for Facebook errors people actually hit. */
+export function explainFacebookError(code: number | undefined, subcode: number | undefined): string | undefined {
+  if (code === 368 && subcode === 1390008) {
+    return 'Facebook temporarily blocked uploads for posting too fast (anti-spam). Wait at least 24 hours, then publish in small batches.';
+  }
+  if (code === 368)
+    return 'Facebook flagged this action as abusive or disallowed. Check the Page in Meta Business Suite.';
+  if (code === 190) return 'The Facebook token is invalid or expired. Run `reel-cli facebook login`.';
+  if (code === 10 || (code !== undefined && code >= 200 && code < 300)) {
+    return 'Missing permission. Run `reel-cli facebook verify` and `reel-cli facebook login`.';
+  }
+  if (code !== undefined && RATE_LIMIT_CODES.has(code))
+    return 'Facebook rate limit reached; the video will be retried later.';
+  return undefined;
+}
+
 /** Short, log-safe description, e.g. "[190/463] Invalid OAuth access token." */
 export function describeError(err: unknown): { code: string | null; message: string } {
   if (err instanceof FacebookApiError) {
     const { code, subcode } = err.details;
-    return { code: code === undefined ? null : `${code}${subcode ? `/${subcode}` : ''}`, message: err.message };
+    const explanation = explainFacebookError(code, subcode);
+    const message = explanation && !err.message.includes(explanation) ? `${err.message} (${explanation})` : err.message;
+    return { code: code === undefined ? null : `${code}${subcode ? `/${subcode}` : ''}`, message };
   }
   return { code: null, message: err instanceof Error ? err.message : String(err) };
 }

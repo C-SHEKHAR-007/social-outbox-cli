@@ -137,7 +137,11 @@ export class GraphClient {
     const body: unknown = await res.json().catch(() => ({}));
     if (!res.ok || (body as GraphErrorBody).error) {
       const e = (body as GraphErrorBody).error ?? {};
-      throw new FacebookApiError(e.error_user_msg ?? e.message ?? `HTTP ${res.status}`, {
+      // Facebook sometimes sends empty strings; fall back to the codes so the message is never blank.
+      const text =
+        [e.error_user_msg, e.message].find((m) => m !== undefined && m.trim() !== '') ??
+        `Facebook error ${e.code ?? '?'}${e.error_subcode ? `/${e.error_subcode}` : ''} (HTTP ${res.status})`;
+      throw new FacebookApiError(text, {
         httpStatus: res.status,
         code: e.code,
         subcode: e.error_subcode,
