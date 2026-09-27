@@ -52,5 +52,13 @@
     "typescript": "~6.0",
     "typescript-eslint": "^8.70.1",
     "vitest": "^4.1.11"
+  },
+  "prettier": {
+    "printWidth": 120,
+    "singleQuote": true,
+    "trailingComma": "all",
+    "semi": true,
+    "arrowParens": "always",
+    "endOfLine": "lf"
   }
 }
