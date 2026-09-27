@@ -130,9 +130,17 @@ The target is chosen automatically by duration. You can pin it per video in the 
 | `FAILED`                                 | Facebook rejected it or retries ran out (`show <id>` says why)           | `retry`                                |
 | `SKIPPED`                                | action `SKIP`                                                            | change the action in the CSV           |
 
-### The Reels quota
+### Upload limits (Facebook anti-spam)
 
-Meta allows 30 API-published Reels per rolling 24 hours; the tool uses 25 (`QUOTA_PER_24H`) as a margin. A Reel is counted **when it is sent to Facebook** (including drafts), not when it goes live, so a big batch of scheduled Reels is submitted 25 at a time: the rest become `HELD` and go out on the next day's `publish`, in schedule order. Page videos are not limited.
+Facebook blocks accounts that upload too much, too fast (error **368 / 1390008**: _"you were misusing this feature by going too fast"_), whatever the API endpoint. We learned this the hard way: 138 uploads in about 5 hours triggered a block. So every `publish` run respects three limits:
+
+| Limit                    | Default                 | Counts                                              |
+| ------------------------ | ----------------------- | --------------------------------------------------- |
+| `DAILY_UPLOAD_LIMIT`     | **25 per rolling 24 h** | **every** upload: Reels, Page videos and drafts     |
+| `QUOTA_PER_24H`          | 25 per rolling 24 h     | Reels only (Meta's Reels API allows 30)             |
+| `MIN_UPLOAD_GAP_SECONDS` | **120 s**               | time between two uploads starting, also across runs |
+
+Uploads are counted **when they are sent** (not when they go live), including uploads from earlier runs. Anything over a limit becomes `HELD` and goes out on a later run. `PUBLISH_CONCURRENCY` defaults to **1** (one upload at a time). Because the videos are scheduled ahead, uploading 25 a day is plenty: they still post at their scheduled times.
 
 ---
 
@@ -307,16 +315,16 @@ reel-cli publish --yes              # no question (for scripts/cron)
 
 What happens per video: file re-checked → upload → final call → Facebook processes it.
 
-- **Parallel uploads:** 3 videos at a time by default (`--concurrency 1-5`, or `PUBLISH_CONCURRENCY`). Uploads are limited mostly by round trips (Facebook sends Page videos in 1 MB chunks), so parallel uploads are much faster overall. The Reels quota is reserved for uploads in flight, so it is never exceeded.
+- **One upload at a time, at least 120 s apart**, and at most `DAILY_UPLOAD_LIMIT` (25) uploads per rolling 24 h; the rest are held for the next run. `--concurrency 2-5` (or `PUBLISH_CONCURRENCY`) uploads in parallel, but that makes bursts more likely, so only use it if your Page tolerates it.
 - **Waiting for processing:** for `POST_NOW` the tool waits (up to 120 s) until the video is live and saves the link. **Scheduled videos are not waited for**: they are already safely on Facebook, stay `PROCESSING` locally, and `reel-cli reconcile` (or the next `publish`) confirms them as `SCHEDULED`. `--wait 120` waits for every video; `--no-wait` never waits.
 - Videos scheduled beyond Facebook's window, or over the Reels quota, become `HELD`.
 
-Typical speed (measured): about 1 MB/s per upload plus a few seconds per video, so 3 in parallel handles about 150 MB per minute.
+Typical speed (measured): about 1 MB/s per upload. With the 120 s gap, 25 uploads take roughly an hour, and they can be left running.
 
 **Daily routine** (until the Phase 8 worker exists):
 
 ```bash
-reel-cli publish --yes      # submits held Reels (quota freed) and videos now inside Facebook's window
+reel-cli publish --yes      # uploads up to 25 more (daily limit), incl. held videos and ones now inside Facebook's window
 reel-cli reconcile          # marks SCHEDULED videos that went live as PUBLISHED, settles anything pending
 reel-cli status
 ```
@@ -400,11 +408,13 @@ All settings are validated at startup (an invalid value names the variable). Rea
 | `FACEBOOK_OAUTH_PORT`                                            | `8585`                              | Local port for the browser login callback                                        |
 | `GRAPH_API_VERSION`                                              | `v26.0`                             | Graph API version                                                                |
 | `TIMEZONE`                                                       | `Asia/Kolkata`                      | Time zone for CSV dates, slots and output                                        |
-| `QUOTA_PER_24H`                                                  | `25`                                | Max Reels submitted per rolling 24 h (Meta allows 30)                            |
+| `QUOTA_PER_24H`                                                  | `25`                                | Max Reels per rolling 24 h (Meta allows 30); applies inside `DAILY_UPLOAD_LIMIT` |
 | `REEL_MAX_DURATION_S`                                            | `90`                                | Longer videos become Page videos. Run `reel-cli recheck` after changing          |
 | `REEL_SLOTS` / `VIDEO_SLOTS`                                     | `09:00,14:00,20:00` / `12:00,18:00` | Default daily times for `reel-cli schedule` (`none` disables)                    |
 | `MAX_RETRIES`                                                    | `3`                                 | Retries for transient errors per upload step                                     |
-| `PUBLISH_CONCURRENCY`                                            | `3`                                 | Videos uploaded in parallel by `publish` (1–5)                                   |
+| `DAILY_UPLOAD_LIMIT`                                             | `25`                                | Uploads of any kind per rolling 24 h (Facebook anti-spam)                        |
+| `MIN_UPLOAD_GAP_SECONDS`                                         | `120`                               | Minimum seconds between two uploads                                              |
+| `PUBLISH_CONCURRENCY`                                            | `1`                                 | Videos uploaded in parallel by `publish` (1–5); keep 1 to avoid bursts           |
 | `DATABASE_URL`                                                   | `./data/reels.db`                   | SQLite database location                                                         |
 | `LOG_LEVEL`                                                      | `info`                              | `fatal` … `trace`                                                                |
 | `OLLAMA_*`, `WHISPER_*`, `AI_PROVIDER`, `TRANSCRIPTION_PROVIDER` | see `.env.example`                  | For Phase 5 (AI captions)                                                        |
@@ -413,29 +423,30 @@ All settings are validated at startup (an invalid value names the variable). Rea
 
 ## Troubleshooting
 
-| Problem                                                                 | Fix                                                                                                                                                                                                     |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `reel-cli: Permission denied`                                           | Rebuild: `npm run build` (it restores the executable bit). If it persists: `chmod +x dist/cli/index.js`.                                                                                                |
-| `reel-cli: command not found`                                           | Run `npm link` in the project folder, or use `npm run reel-cli -- <command>`.                                                                                                                           |
-| Browser shows **"Invalid Scopes: pages_show_list, …"**                  | The app lacks the Page permissions. Add the **Manage everything on your Page** use case and click **Add** for the 3 permissions; if that use case can't be added, create a new app with it (see setup). |
-| `FACEBOOK_APP_ID and FACEBOOK_APP_SECRET must be set`                   | Fill them in `.env` (App settings → Basic).                                                                                                                                                             |
-| `facebook verify` says **"Cannot parse access token"** / uses `.env`    | `FACEBOOK_PAGE_ID` + `FACEBOOK_PAGE_ACCESS_TOKEN` in `.env` override the login. Empty both lines.                                                                                                       |
-| `No Facebook Page connected`                                            | `reel-cli facebook login`, or after a reset `reel-cli facebook pages --select <id>`.                                                                                                                    |
-| `Port 8585 is already in use`                                           | `reel-cli facebook login --port 8600` (or set `FACEBOOK_OAUTH_PORT`).                                                                                                                                   |
-| Import: **"already submitted to Facebook"** and nothing saved           | A row that is DRAFT/SCHEDULED/PUBLISHED was edited. Restore that row as exported (or re-export) and import again.                                                                                       |
-| Import: **"Record changed since this CSV was exported"**                | Re-export after `recheck`/`publish`/`scan`, redo the edits (or `--force` for rows not yet sent).                                                                                                        |
-| Import: `Invalid scheduled_at`                                          | Use `YYYY-MM-DD HH:mm`; format the column as _Text_ so the spreadsheet doesn't rewrite dates.                                                                                                           |
-| Import succeeds but the change isn't there                              | Save the CSV in the spreadsheet first, then import (without `--dry-run`).                                                                                                                               |
-| Publish: **"caption is empty"**                                         | Every video needs a caption (also drafts).                                                                                                                                                              |
-| Publish: **"scheduled_at is in the past or less than 10 minutes away"** | Facebook needs ≥ 10 minutes' notice. Move the time, or use `POST_NOW`.                                                                                                                                  |
-| Publish: `Not a terminal: add --yes`                                    | Non-interactive runs (cron, scripts) need `--yes`.                                                                                                                                                      |
-| Many Reels `HELD` with "Reels 24h quota reached"                        | Expected: run `reel-cli publish` again the next day (or schedule fewer Reels per day).                                                                                                                  |
-| **"Publishing is paused (Facebook error 368)"**                         | Facebook flagged an action as abusive/disallowed. Check the Page in Meta Business Suite (notifications, Page quality), then `reel-cli resume`.                                                          |
-| A video is `FINISHING` / result "unknown"                               | Run `reel-cli reconcile`. It asks Facebook and never re-posts.                                                                                                                                          |
-| Scheduled videos stay `PROCESSING` after `publish`                      | Normal: they are already on Facebook. `reel-cli reconcile` a few minutes later marks them `SCHEDULED`.                                                                                                  |
-| Publishing is slow                                                      | Use `--concurrency 4` or `5` (default 3). Scheduled videos don't wait for processing. Otherwise upload speed is limited by your connection.                                                             |
-| A video is `FAILED`                                                     | `reel-cli show <id>` shows why. Fix it, then `reel-cli retry --ids <id>` and `publish`.                                                                                                                 |
-| `doctor`: Ollama / whisper warnings                                     | Only needed for AI captions (Phase 5); ignore for now.                                                                                                                                                  |
+| Problem                                                                     | Fix                                                                                                                                                                                                                 |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reel-cli: Permission denied`                                               | Rebuild: `npm run build` (it restores the executable bit). If it persists: `chmod +x dist/cli/index.js`.                                                                                                            |
+| `reel-cli: command not found`                                               | Run `npm link` in the project folder, or use `npm run reel-cli -- <command>`.                                                                                                                                       |
+| Browser shows **"Invalid Scopes: pages_show_list, …"**                      | The app lacks the Page permissions. Add the **Manage everything on your Page** use case and click **Add** for the 3 permissions; if that use case can't be added, create a new app with it (see setup).             |
+| `FACEBOOK_APP_ID and FACEBOOK_APP_SECRET must be set`                       | Fill them in `.env` (App settings → Basic).                                                                                                                                                                         |
+| `facebook verify` says **"Cannot parse access token"** / uses `.env`        | `FACEBOOK_PAGE_ID` + `FACEBOOK_PAGE_ACCESS_TOKEN` in `.env` override the login. Empty both lines.                                                                                                                   |
+| `No Facebook Page connected`                                                | `reel-cli facebook login`, or after a reset `reel-cli facebook pages --select <id>`.                                                                                                                                |
+| `Port 8585 is already in use`                                               | `reel-cli facebook login --port 8600` (or set `FACEBOOK_OAUTH_PORT`).                                                                                                                                               |
+| Import: **"already submitted to Facebook"** and nothing saved               | A row that is DRAFT/SCHEDULED/PUBLISHED was edited. Restore that row as exported (or re-export) and import again.                                                                                                   |
+| Import: **"Record changed since this CSV was exported"**                    | Re-export after `recheck`/`publish`/`scan`, redo the edits (or `--force` for rows not yet sent).                                                                                                                    |
+| Import: `Invalid scheduled_at`                                              | Use `YYYY-MM-DD HH:mm`; format the column as _Text_ so the spreadsheet doesn't rewrite dates.                                                                                                                       |
+| Import succeeds but the change isn't there                                  | Save the CSV in the spreadsheet first, then import (without `--dry-run`).                                                                                                                                           |
+| Publish: **"caption is empty"**                                             | Every video needs a caption (also drafts).                                                                                                                                                                          |
+| Publish: **"scheduled_at is in the past or less than 10 minutes away"**     | Facebook needs ≥ 10 minutes' notice. Move the time, or use `POST_NOW`.                                                                                                                                              |
+| Publish: `Not a terminal: add --yes`                                        | Non-interactive runs (cron, scripts) need `--yes`.                                                                                                                                                                  |
+| Videos `HELD` with "daily upload limit reached" / "Reels 24h quota reached" | Expected: run `reel-cli publish` again the next day (or schedule fewer videos per day).                                                                                                                             |
+| **Error 368/1390008**, "blocked … going too fast", publishing PAUSED        | Facebook's anti-spam block. **Wait at least 24 h** (don't retry in between), check Meta Business Suite for warnings, then `reel-cli resume` and publish in small batches (the default limits: 25/day, 120 s apart). |
+| **"Publishing is paused (Facebook error 368)"** (other sub-codes)           | Facebook flagged an action as abusive/disallowed. Check the Page in Meta Business Suite (notifications, Page quality), then `reel-cli resume`.                                                                      |
+| A video is `FINISHING` / result "unknown"                                   | Run `reel-cli reconcile`. It asks Facebook and never re-posts.                                                                                                                                                      |
+| Scheduled videos stay `PROCESSING` after `publish`                          | Normal: they are already on Facebook. `reel-cli reconcile` a few minutes later marks them `SCHEDULED`.                                                                                                              |
+| Publishing is slow                                                          | By design: 1 upload at a time, 120 s apart, max 25/day (Facebook blocks bursts). The videos still post at their scheduled times. Lower `MIN_UPLOAD_GAP_SECONDS` only with care.                                     |
+| A video is `FAILED`                                                         | `reel-cli show <id>` shows why. Fix it, then `reel-cli retry --ids <id>` and `publish`.                                                                                                                             |
+| `doctor`: Ollama / whisper warnings                                         | Only needed for AI captions (Phase 5); ignore for now.                                                                                                                                                              |
 
 ---
 
