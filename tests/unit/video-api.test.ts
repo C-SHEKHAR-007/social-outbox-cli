@@ -186,7 +186,7 @@ describe('GraphClient POST', () => {
   it('parses the real Page video status Facebook returned (ISO publish_time, /reel/ permalink)', async () => {
     // Captured from the live API on 2026-09-27 (Video_116, scheduled for 27 Sep 03:00 IST).
     const graph = fakeGraph({
-      '1444795684170536': () => ({
+      '1000000000000001': () => ({
         body: {
           status: {
             video_status: 'ready',
@@ -198,13 +198,13 @@ describe('GraphClient POST', () => {
               publish_time: '2026-09-26T21:30:00+0000',
             },
           },
-          permalink_url: '/reel/1444795684170536/',
+          permalink_url: '/reel/1000000000000001/',
           published: false,
-          id: '1444795684170536',
+          id: '1000000000000001',
         },
       }),
     });
-    const s = await getVideoStatus(client(graph), '1444795684170536', TOKEN);
+    const s = await getVideoStatus(client(graph), '1000000000000001', TOKEN);
     expect(s.status?.publishing_phase?.publish_time).toBe(Date.parse('2026-09-26T21:30:00Z') / 1000);
     expect(s.status?.publishing_phase?.publish_status).toBe('scheduled');
   });

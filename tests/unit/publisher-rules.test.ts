@@ -155,9 +155,9 @@ describe('interpretStatus', () => {
         processing_phase: { status: 'not_started' },
         publishing_phase: { status: 'not_started' },
       },
-      permalink_url: '/122104922517484727/videos/2289186985243211',
+      permalink_url: '/100000000000000006/videos/1000000000000004',
       published: true,
-      id: '2289186985243211',
+      id: '1000000000000004',
     };
     expect(interpretStatus(live).outcome).toBe('uploading');
     expect(

@@ -96,7 +96,7 @@ describe('publish command', () => {
     store.set(`page:${PAGE_ID}`, 'PAGE-TOKEN');
     ctx().withDb((db) => {
       setAppState(db, 'page_id', PAGE_ID);
-      setAppState(db, 'page_name', 'Reel Viral Page');
+      setAppState(db, 'page_name', 'My Test Page');
     });
     fb = fakeFacebookVideos();
     clock = NOW.getTime();
@@ -115,7 +115,7 @@ describe('publish command', () => {
     const { code } = await runPublishCommand(ctx(), { dryRun: true }, deps());
     expect(code).toBe(0);
     const text = out.text();
-    expect(text).toContain('Publish plan for "Reel Viral Page" (dry run: nothing will be sent)');
+    expect(text).toContain('Publish plan for "My Test Page" (dry run: nothing will be sent)');
     expect(text).toMatch(/Publish now: 1\n {2}#1 +Video_1\.mp4 +REEL/);
     expect(text).toMatch(/Schedule on Facebook: 1\n {2}#2 +Video_2\.mp4 +REEL +2026-09-27 16:30/);
     expect(text).toContain('Hold (not sent yet): 1');
@@ -128,7 +128,7 @@ describe('publish command', () => {
     await add();
     confirmAnswer = false;
     await runPublishCommand(ctx(), {}, deps());
-    expect(asked).toEqual(['Publish/schedule 1 video(s) on "Reel Viral Page"? [y/N] ']);
+    expect(asked).toEqual(['Publish/schedule 1 video(s) on "My Test Page"? [y/N] ']);
     expect(out.text()).toContain('Cancelled. Nothing was sent.');
     expect(fb.requests).toHaveLength(0);
   });

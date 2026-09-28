@@ -101,12 +101,12 @@ Also try a time **less than 10 minutes** ahead (`+5 min`) and one **more than 29
 
 ## 4b. Test C: long video (> 90 s) as DRAFT (most important for this project)
 
-The Facebook **app** accepts long Reels (no length limit since June 2025), but the **API docs** still say 3–90 s. 556 of the 737 videos in `YOutube Videos/2` are longer than 90 s, so this test decides whether they need splitting.
+The Facebook **app** accepts long Reels (no length limit since June 2025), but the **API docs** still say 3–90 s. 556 of the 737 videos in the first real batch are longer than 90 s, so this test decides whether they need splitting.
 
 Use one of the ~7-minute videos (the same kind you already posted from the app), and repeat START → TRANSFER → FINISH with `video_state=DRAFT`:
 
 ```bash
-export VIDEO="/home/shekhar/Desktop/YOutube Videos/2/Video_001.mp4"   # 435 s
+export VIDEO="/path/to/videos/long-video.mp4"   # 435 s
 # START, TRANSFER (same commands as Test A), then:
 curl -s -X POST "$G/$PAGE_ID/video_reels" \
   -F upload_phase=finish -F video_id=$VIDEO_ID -F video_state=DRAFT \
@@ -137,7 +137,7 @@ Paste the JSON responses to Claude (**remove the token** if it appears anywhere;
 | --- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
 | Q1  | Does SCHEDULED count against 30/24h at creation or at go-live?             | _TBD (assume creation)_                                                                                                                    |                                                  |
 | Q2  | Can a Development-mode app with admin post to own Page without App Review? | **Yes.** App "Reel Publisher" in Development mode, use case _Manage everything on your Page_, permissions added (not submitted for review) | Draft Reel + 2 scheduled Page videos, 2026-09-27 |
-| Q3  | Does FINISH return `post_id`?                                              | **Yes** for Reels (`{success:true, post_id:"…"}`)                                                                                          | Video_711 draft, post id 122104900455484727      |
+| Q3  | Does FINISH return `post_id`?                                              | **Yes** for Reels (`{success:true, post_id:"…"}`)                                                                                          | Video_711 draft, post id 100000000000000003      |
 | Q4  | Can a scheduled Reel be deleted/rescheduled?                               | _TBD_                                                                                                                                      |                                                  |
 | Q5  | Max `description` length / hashtag count                                   | _TBD_                                                                                                                                      |                                                  |
 | Q6  | How does a copyright block appear in `status`?                             | _TBD_                                                                                                                                      |                                                  |
