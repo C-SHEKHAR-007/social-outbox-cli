@@ -73,7 +73,17 @@ reel-cli --help
 
 Without `npm link`, use `npm run reel-cli -- <command>` (runs from source) or `node dist/cli/index.js <command>`.
 
-The **workspace** is the folder you run `reel-cli` in: `.env`, `data/reels.db`, `logs/`, `exports/` and `config/` live there. The project folder itself works fine as the workspace.
+### Where your data lives: the workspace
+
+Runtime data (`.env`, `data/reels.db`, `logs/`, `exports/`, `config/page-profile.yaml`, `videos/`) is kept **separate from the code**, in a _workspace_ folder:
+
+| You run `reel-cli` from…                     | Workspace                            |
+| -------------------------------------------- | ------------------------------------ |
+| the project folder                           | `<project>/workspace/` (git-ignored) |
+| any other folder                             | that folder                          |
+| anywhere, with `REEL_WORKSPACE=/path/to/dir` | that path                            |
+
+`reel-cli doctor` prints which workspace is in use. So in the project folder, your `.env` is `workspace/.env` and exports are in `workspace/exports/`. Relative paths you pass to commands (`import exports/reels.csv`, `scan ./videos`) are looked up in the current folder first, then in the workspace, so the commands in this README work unchanged.
 
 ---
 
@@ -81,16 +91,16 @@ The **workspace** is the folder you run `reel-cli` in: `.env`, `data/reels.db`, 
 
 ```bash
 cd "Facebook Reel Automation Tool"
-reel-cli init                                   # 1. folders, .env, database (safe to re-run)
-# 2. put FACEBOOK_APP_ID and FACEBOOK_APP_SECRET in .env (see "Connect your Facebook Page")
+reel-cli init                                   # 1. creates workspace/ with folders, .env, database (safe to re-run)
+# 2. put FACEBOOK_APP_ID and FACEBOOK_APP_SECRET in workspace/.env (see "Connect your Facebook Page")
 reel-cli facebook login                         # 3. browser login, pick your Page
 reel-cli facebook verify                        #    ✓ PAGE token, expires never
 reel-cli doctor                                 # 4. everything required should be ✓
 
 reel-cli scan "/path/to/your/videos"            # 5. find and check all videos
-reel-cli export                                 # 6. → exports/reels.csv
+reel-cli export                                 # 6. → workspace/exports/reels.csv
 #    edit in LibreOffice/Excel: caption, hashtags, action=SCHEDULE, scheduled_at, is_ai_generated
-reel-cli import exports/reels.csv --dry-run     # 7. preview changes
+reel-cli import exports/reels.csv --dry-run     # 7. preview changes (relative paths also look inside the workspace)
 reel-cli import exports/reels.csv
 reel-cli validate                               # 8. every video you set up should be ✓
 
@@ -366,8 +376,8 @@ In Facebook: **Meta Business Suite → Planner** (scheduled) and **Content** (pu
 To clear everything the tool has scanned and start fresh (your videos, code and Facebook login are not touched):
 
 ```bash
-rm -f data/reels.db data/reels.db-wal data/reels.db-shm   # the database (all scanned videos and states)
-rm -f logs/*.log exports/*                                 # logs and CSV exports
+rm -f workspace/data/reels.db workspace/data/reels.db-wal workspace/data/reels.db-shm   # the database
+rm -f workspace/logs/*.log workspace/exports/*                                         # logs and CSV exports
 reel-cli init                                              # recreate the database
 reel-cli facebook pages --select <page id>                 # re-select your Page (uses the stored login, no browser)
 reel-cli scan "/path/to/new/folder"
@@ -401,23 +411,24 @@ npm run build            # database migrations are applied automatically on the 
 
 All settings are validated at startup (an invalid value names the variable). Real environment variables override `.env`. Missing settings use the defaults below.
 
-| Setting                                                          | Default                             | Meaning                                                                          |
-| ---------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------- |
-| `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET`                        | –                                   | Your Meta app (required for login/verify/publish)                                |
-| `FACEBOOK_PAGE_ID` + `FACEBOOK_PAGE_ACCESS_TOKEN`                | –                                   | Optional override of the keychain login (both must be set). Leave empty normally |
-| `FACEBOOK_OAUTH_PORT`                                            | `8585`                              | Local port for the browser login callback                                        |
-| `GRAPH_API_VERSION`                                              | `v26.0`                             | Graph API version                                                                |
-| `TIMEZONE`                                                       | `Asia/Kolkata`                      | Time zone for CSV dates, slots and output                                        |
-| `QUOTA_PER_24H`                                                  | `25`                                | Max Reels per rolling 24 h (Meta allows 30); applies inside `DAILY_UPLOAD_LIMIT` |
-| `REEL_MAX_DURATION_S`                                            | `90`                                | Longer videos become Page videos. Run `reel-cli recheck` after changing          |
-| `REEL_SLOTS` / `VIDEO_SLOTS`                                     | `09:00,14:00,20:00` / `12:00,18:00` | Default daily times for `reel-cli schedule` (`none` disables)                    |
-| `MAX_RETRIES`                                                    | `3`                                 | Retries for transient errors per upload step                                     |
-| `DAILY_UPLOAD_LIMIT`                                             | `25`                                | Uploads of any kind per rolling 24 h (Facebook anti-spam)                        |
-| `MIN_UPLOAD_GAP_SECONDS`                                         | `120`                               | Minimum seconds between two uploads                                              |
-| `PUBLISH_CONCURRENCY`                                            | `1`                                 | Videos uploaded in parallel by `publish` (1–5); keep 1 to avoid bursts           |
-| `DATABASE_URL`                                                   | `./data/reels.db`                   | SQLite database location                                                         |
-| `LOG_LEVEL`                                                      | `info`                              | `fatal` … `trace`                                                                |
-| `OLLAMA_*`, `WHISPER_*`, `AI_PROVIDER`, `TRANSCRIPTION_PROVIDER` | see `.env.example`                  | For Phase 5 (AI captions)                                                        |
+| Setting                                                          | Default                             | Meaning                                                                              |
+| ---------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------ |
+| `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET`                        | –                                   | Your Meta app (required for login/verify/publish)                                    |
+| `FACEBOOK_PAGE_ID` + `FACEBOOK_PAGE_ACCESS_TOKEN`                | –                                   | Optional override of the keychain login (both must be set). Leave empty normally     |
+| `FACEBOOK_OAUTH_PORT`                                            | `8585`                              | Local port for the browser login callback                                            |
+| `GRAPH_API_VERSION`                                              | `v26.0`                             | Graph API version                                                                    |
+| `TIMEZONE`                                                       | `Asia/Kolkata`                      | Time zone for CSV dates, slots and output                                            |
+| `QUOTA_PER_24H`                                                  | `25`                                | Max Reels per rolling 24 h (Meta allows 30); applies inside `DAILY_UPLOAD_LIMIT`     |
+| `REEL_MAX_DURATION_S`                                            | `90`                                | Longer videos become Page videos. Run `reel-cli recheck` after changing              |
+| `REEL_SLOTS` / `VIDEO_SLOTS`                                     | `09:00,14:00,20:00` / `12:00,18:00` | Default daily times for `reel-cli schedule` (`none` disables)                        |
+| `MAX_RETRIES`                                                    | `3`                                 | Retries for transient errors per upload step                                         |
+| `DAILY_UPLOAD_LIMIT`                                             | `25`                                | Uploads of any kind per rolling 24 h (Facebook anti-spam)                            |
+| `MIN_UPLOAD_GAP_SECONDS`                                         | `120`                               | Minimum seconds between two uploads                                                  |
+| `PUBLISH_CONCURRENCY`                                            | `1`                                 | Videos uploaded in parallel by `publish` (1–5); keep 1 to avoid bursts               |
+| `REEL_WORKSPACE`                                                 | –                                   | Environment variable: use this folder as the workspace (see _Where your data lives_) |
+| `DATABASE_URL`                                                   | `./data/reels.db`                   | SQLite database location, relative to the workspace                                  |
+| `LOG_LEVEL`                                                      | `info`                              | `fatal` … `trace`                                                                    |
+| `OLLAMA_*`, `WHISPER_*`, `AI_PROVIDER`, `TRANSCRIPTION_PROVIDER` | see `.env.example`                  | For Phase 5 (AI captions)                                                            |
 
 ---
 
@@ -466,7 +477,7 @@ All settings are validated at startup (an invalid value names the variable). Rea
 - `data/reels.db`: SQLite, the source of truth (`videos`, `publish_attempts`, `app_state`).
 - `logs/publisher.log`: JSON logs; tokens and secrets are redacted.
 - The Facebook Page token lives in the **OS keychain** (service `reel-cli`), never in the database, CSVs or logs.
-- Not committed to git: `.env`, `data/`, `logs/`, `exports/`, `videos/`, `config/page-profile.yaml`, `dist/`, `coverage/`, `node_modules/`.
+- Not committed to git: `workspace/` (and `.env`, `data/`, `logs/`, `exports/`, `videos/`, `config/page-profile.yaml` in any other workspace folder), `dist/`, `coverage/`, `node_modules/`.
 
 ---
 
@@ -515,7 +526,8 @@ tests/
 └── helpers.ts
 drizzle/                 # generated SQL migrations (committed)
 docs/                    # plan, Facebook API notes, archived raw plan
-config/                  # page-profile.example.yaml
+templates/               # page-profile.example.yaml (copied into the workspace by `init`)
+workspace/               # your runtime data when run from the project folder (git-ignored)
 ```
 
 Rules of thumb: commands only parse input and print; business logic lives in services that take a `Db` and plain options; `domain/` has no I/O; every external input (env, CSV, ffprobe, Graph API) is validated.
