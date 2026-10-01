@@ -6,8 +6,8 @@ import { FacebookApiError } from '../facebook/graph-client.js';
 import { nowIso } from '../utils/time.js';
 
 /** Records the start of one publish step; returns an id for finishAttempt(). */
-export function startAttempt(db: Db, videoId: number, step: AttemptStep): number {
-  return db.insert(publishAttempts).values({ videoId, step }).returning({ id: publishAttempts.id }).get().id;
+export function startAttempt(db: Db, videoId: number, step: AttemptStep, platform = 'facebook'): number {
+  return db.insert(publishAttempts).values({ videoId, step, platform }).returning({ id: publishAttempts.id }).get().id;
 }
 
 export function finishAttempt(
