@@ -16,13 +16,18 @@ export interface AppCredentials {
 }
 
 /** Facebook Login dialog URL (authorization-code flow). */
-export function buildLoginUrl(app: AppCredentials, redirectUri: string, state: string): string {
+export function buildLoginUrl(
+  app: AppCredentials,
+  redirectUri: string,
+  state: string,
+  extraScopes: readonly string[] = [],
+): string {
   const url = new URL(`https://www.facebook.com/${app.graphApiVersion}/dialog/oauth`);
   url.searchParams.set('client_id', app.appId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('state', state);
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('scope', REQUIRED_SCOPES.join(','));
+  url.searchParams.set('scope', [...REQUIRED_SCOPES, ...extraScopes].join(','));
   url.searchParams.set('auth_type', 'rerequest'); // re-ask for any permission declined earlier
   return url.toString();
 }
@@ -99,6 +104,6 @@ export async function debugToken(client: GraphClient, app: AppCredentials, token
   return res.data;
 }
 
-export function missingScopes(granted: readonly string[]): string[] {
-  return REQUIRED_SCOPES.filter((s) => !granted.includes(s));
+export function missingScopes(granted: readonly string[], extraScopes: readonly string[] = []): string[] {
+  return [...REQUIRED_SCOPES, ...extraScopes].filter((s) => !granted.includes(s));
 }

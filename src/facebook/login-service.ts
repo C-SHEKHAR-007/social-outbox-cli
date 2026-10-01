@@ -32,6 +32,10 @@ export interface LoginDeps {
   print: (line?: string) => void;
   pageId?: string;
   noBrowser?: boolean;
+  /** Permissions requested on top of the Facebook ones (e.g. Instagram publishing). */
+  extraScopes?: readonly string[];
+  /** Command to suggest when permissions are declined. */
+  retryCommand?: string;
 }
 
 export interface LoginResult {
@@ -48,7 +52,7 @@ export async function loginWithBrowser(deps: LoginDeps): Promise<LoginResult> {
   const server = await startCallbackServer({ port: deps.port, state, timeoutMs: deps.timeoutMs });
   let userToken: string;
   try {
-    const url = buildLoginUrl(deps.app, server.redirectUri, state);
+    const url = buildLoginUrl(deps.app, server.redirectUri, state, deps.extraScopes);
     const opened = !deps.noBrowser && (await deps.openUrl(url));
     deps.print(
       opened
@@ -65,10 +69,10 @@ export async function loginWithBrowser(deps: LoginDeps): Promise<LoginResult> {
   }
 
   const info = await debugToken(deps.client, deps.app, userToken);
-  const missing = missingScopes(info.scopes);
+  const missing = missingScopes(info.scopes, deps.extraScopes);
   if (missing.length) {
     throw new UserError(
-      `Facebook did not grant: ${missing.join(', ')}. Run \`reel-cli facebook login\` again and allow all requested permissions.`,
+      `Facebook did not grant: ${missing.join(', ')}. Run \`${deps.retryCommand ?? 'reel-cli facebook login'}\` again and allow all requested permissions.`,
     );
   }
 

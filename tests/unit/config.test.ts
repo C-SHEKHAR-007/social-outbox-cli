@@ -22,6 +22,7 @@ describe('parseConfig', () => {
       timezone: 'Asia/Kolkata',
     });
     expect(c.ai.ollamaModel).toBe('qwen3:8b');
+    expect(c.instagram).toEqual({ dailyLimit: 25, prepareHours: 3 });
     expect(c.databaseUrl).toBe('./data/reels.db');
   });
 

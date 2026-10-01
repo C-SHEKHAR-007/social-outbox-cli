@@ -43,6 +43,8 @@ const EnvSchema = z.object({
   WHISPER_MODEL: z.string().min(1).default('small'),
   WHISPER_BINARY: optionalString,
 
+  INSTAGRAM_DAILY_LIMIT: z.coerce.number().int().min(1).max(100).default(25),
+  INSTAGRAM_PREPARE_HOURS: z.coerce.number().min(0.5).max(20).default(3),
   DATABASE_URL: z.string().min(1).default('./data/reels.db'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
@@ -80,6 +82,12 @@ export interface AppConfig {
     transcriptionProvider: 'whisper-cpp';
     whisperModel: string;
     whisperBinary: string | undefined;
+  };
+  instagram: {
+    /** Instagram posts published per rolling 24h (Instagram itself allows 100). */
+    dailyLimit: number;
+    /** Upload + process this many hours before the publish time (containers expire after 24h). */
+    prepareHours: number;
   };
   databaseUrl: string;
   logLevel: z.infer<typeof EnvSchema>['LOG_LEVEL'];
@@ -121,6 +129,7 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
       whisperModel: e.WHISPER_MODEL,
       whisperBinary: e.WHISPER_BINARY,
     },
+    instagram: { dailyLimit: e.INSTAGRAM_DAILY_LIMIT, prepareHours: e.INSTAGRAM_PREPARE_HOURS },
     databaseUrl: e.DATABASE_URL,
     logLevel: e.LOG_LEVEL,
   };

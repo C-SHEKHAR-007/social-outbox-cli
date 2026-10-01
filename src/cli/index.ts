@@ -9,6 +9,7 @@ import { runExport } from './commands/export.js';
 import { runFacebookLogin, runFacebookLogout, runFacebookPages, runFacebookVerify } from './commands/facebook.js';
 import { runImport } from './commands/import.js';
 import { runInit } from './commands/init.js';
+import { runInstagramConnect, runInstagramStatus } from './commands/instagram.js';
 import { runPublishCommand, runReconcileCommand, runResume, runRetry } from './commands/publish.js';
 import { runRecheck } from './commands/recheck.js';
 import { runScan } from './commands/scan.js';
@@ -214,6 +215,27 @@ facebook
   .description('remove stored Facebook tokens')
   .action(() => {
     runFacebookLogout(workspace());
+  });
+
+const instagram = program
+  .command('instagram')
+  .description('publish Reels to the Instagram account linked to your Facebook Page');
+
+instagram
+  .command('connect')
+  .description('link the Instagram professional account of your Page (adds Instagram permissions if needed)')
+  .option('--login', 'always run the browser login again')
+  .option('--port <port>', 'local callback port (default FACEBOOK_OAUTH_PORT, 8585)')
+  .option('--no-browser', 'print the login URL instead of opening a browser')
+  .action(async (options: { login?: boolean; port?: string; browser?: boolean }) => {
+    await runInstagramConnect(workspace(), options);
+  });
+
+instagram
+  .command('status')
+  .description('Instagram account, posts by state and 24h usage')
+  .action(async () => {
+    await runInstagramStatus(workspace());
   });
 
 program.parseAsync(process.argv).catch((err: unknown) => {
