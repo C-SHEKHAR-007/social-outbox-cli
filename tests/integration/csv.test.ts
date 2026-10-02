@@ -5,10 +5,10 @@ import { CSV_COLUMNS } from '../../src/csv/columns.js';
 import { exportVideos } from '../../src/csv/export-service.js';
 import { applyImport, parseCsv, planImport } from '../../src/csv/import-service.js';
 import { openDatabase, type DbHandle } from '../../src/db/client.js';
-import { videos, type NewVideo } from '../../src/db/schema.js';
+import { platformPosts, videos, type NewVideo } from '../../src/db/schema.js';
 import { updateVideo } from '../../src/db/video-repository.js';
 import { UserError } from '../../src/utils/errors.js';
-import { videoRow } from '../fixtures/factories.js';
+import { mediaInfo, videoRow } from '../fixtures/factories.js';
 
 const TZ = 'Asia/Kolkata';
 const NOW = new Date('2026-09-26T06:00:00.000Z');
@@ -261,5 +261,116 @@ describe('CSV export/import', () => {
     const plan = planImport(h.db, stringify(shuffled, { header: true }), opts);
     expect(plan.errors).toEqual([]);
     expect(plan.changes[0]?.fields).toEqual(['caption']);
+  });
+
+  describe('Instagram columns', () => {
+    const ig = (videoId: number) => h.db.select().from(platformPosts).where(eq(platformPosts.videoId, videoId)).get();
+
+    it('exports ig_action, ig_scheduled_at and ig_state', () => {
+      const v = insert();
+      h.db
+        .insert(platformPosts)
+        .values({
+          videoId: v.id,
+          platform: 'instagram',
+          action: 'SCHEDULE',
+          scheduledAt: '2026-09-27T13:30:00.000Z',
+          state: 'UPLOADED',
+        })
+        .run();
+      expect(exportRows()[0]).toMatchObject({
+        ig_action: 'SCHEDULE',
+        ig_scheduled_at: '2026-09-27 19:00',
+        ig_state: 'UPLOADED',
+      });
+    });
+
+    it('adds Instagram to a video already scheduled on Facebook without touching its Facebook data', () => {
+      const v = insert({
+        state: 'SCHEDULED',
+        action: 'SCHEDULE',
+        scheduledAt: '2026-09-27T13:00:00.000Z',
+        caption: 'live',
+      });
+      const before = get(v.id);
+      const csv = edited((rows) => {
+        rows[0]!.ig_action = 'schedule';
+        rows[0]!.ig_scheduled_at = '2026-09-27 19:00';
+      });
+      const plan = planImport(h.db, csv, opts);
+      expect(plan.errors).toEqual([]);
+      expect(plan.changes).toEqual([]);
+      expect(plan.igChanges).toHaveLength(1);
+      applyImport(h.db, plan.changes, plan.igChanges);
+      expect(ig(v.id)).toMatchObject({
+        platform: 'instagram',
+        action: 'SCHEDULE',
+        scheduledAt: '2026-09-27T13:30:00.000Z',
+        state: 'READY',
+      });
+      expect(get(v.id)).toEqual(before);
+    });
+
+    it('validates Instagram values and Instagram limits', () => {
+      insert();
+      insert();
+      insert({ durationS: 1200, publishTarget: 'VIDEO', mediaInfo: mediaInfo({ durationS: 1200 }) });
+      const csv = edited((rows) => {
+        rows[0]!.ig_action = 'SEND';
+        rows[1]!.ig_action = 'SCHEDULE';
+        rows[2]!.ig_action = 'POST_NOW';
+      });
+      expect(planImport(h.db, csv, opts).errors.map((e) => e.messages[0])).toEqual([
+        'Invalid ig_action: SEND (use POST_NOW, SCHEDULE, SKIP or leave empty)',
+        'ig_scheduled_at is required when ig_action is SCHEDULE',
+        'Not possible on Instagram: duration 20.0 min > 15 min (Instagram limit)',
+      ]);
+    });
+
+    it('locks posts already sent to Instagram; clearing the action resets an unsent post', () => {
+      const sent = insert();
+      const unsent = insert();
+      h.db
+        .insert(platformPosts)
+        .values({ videoId: sent.id, platform: 'instagram', action: 'POST_NOW', state: 'PUBLISHED' })
+        .run();
+      h.db
+        .insert(platformPosts)
+        .values({ videoId: unsent.id, platform: 'instagram', action: 'POST_NOW', state: 'READY' })
+        .run();
+      const csv = edited((rows) => {
+        rows[0]!.ig_action = 'SKIP';
+        rows[1]!.ig_action = '';
+      });
+      const plan = planImport(h.db, csv, opts);
+      expect(plan.errors.map((e) => e.messages[0])).toEqual([
+        'Cannot edit Instagram columns: already sent to Instagram (state PUBLISHED)',
+      ]);
+      const ok = planImport(
+        h.db,
+        edited((rows) => (rows[1]!.ig_action = '')),
+        opts,
+      );
+      applyImport(h.db, ok.changes, ok.igChanges);
+      expect(ig(unsent.id)).toMatchObject({ action: null, state: 'NEW' });
+    });
+
+    it('an old CSV without the Instagram columns leaves Instagram posts alone', () => {
+      const v = insert();
+      h.db
+        .insert(platformPosts)
+        .values({ videoId: v.id, platform: 'instagram', action: 'POST_NOW', state: 'READY' })
+        .run();
+      const rows = exportRows().map((r) => {
+        const { ig_action: _a, ig_scheduled_at: _b, ig_state: _c, ...rest } = r as Record<string, string>;
+        return { ...rest, caption: 'edited' };
+      });
+      const plan = planImport(h.db, stringify(rows, { header: true }), opts);
+      expect(plan.errors).toEqual([]);
+      expect(plan.igChanges).toEqual([]);
+      applyImport(h.db, plan.changes, plan.igChanges);
+      expect(ig(v.id)).toMatchObject({ action: 'POST_NOW', state: 'READY' });
+      expect(get(v.id).caption).toBe('edited');
+    });
   });
 });

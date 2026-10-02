@@ -3,7 +3,7 @@ import { runInit } from '../../src/cli/commands/init.js';
 import { runStatus } from '../../src/cli/commands/status.js';
 import { createContext } from '../../src/cli/context.js';
 import { setAppState } from '../../src/db/app-state.js';
-import { videos, type NewVideo } from '../../src/db/schema.js';
+import { platformPosts, videos, type NewVideo } from '../../src/db/schema.js';
 import { UserError } from '../../src/utils/errors.js';
 import { videoRow } from '../fixtures/factories.js';
 import { collectOutput, makeTempDir } from '../helpers.js';
@@ -64,5 +64,26 @@ describe('status', () => {
     expect(text).toContain('2026-09-26 18:30'); // 13:00Z shown in IST
     expect(text).toContain('Reels quota:  2/25 used');
     expect(report.byTarget).toEqual({ REEL: 6, VIDEO: 0 });
+  });
+
+  it('adds a one-line Instagram summary only when Instagram posts exist', () => {
+    const tmp = makeTempDir();
+    cleanup = tmp.cleanup;
+    runInit(tmp.dir, () => {});
+    const out = collectOutput();
+    const ctx = createContext({ cwd: tmp.dir, env: {}, print: out.print });
+    const h = ctx.openDb();
+    const v = h.db.insert(videos).values(video({})).returning().get();
+    h.close();
+    expect(runStatus(ctx).instagram).toBeUndefined();
+    expect(out.text()).not.toContain('Instagram:');
+    const h2 = ctx.openDb();
+    h2.db
+      .insert(platformPosts)
+      .values({ videoId: v.id, platform: 'instagram', action: 'POST_NOW', state: 'UPLOADED' })
+      .run();
+    h2.close();
+    expect(runStatus(ctx).instagram).toEqual({ planned: 1, published: 0 });
+    expect(out.text()).toContain('Instagram:    1 planned, 0 published (reel-cli instagram status)');
   });
 });

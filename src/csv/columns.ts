@@ -14,6 +14,10 @@ export const CSV_COLUMNS = [
   'scheduled_at',
   'is_ai_generated',
   'last_error',
+  // Instagram (optional on import: CSVs without these columns keep working)
+  'ig_action',
+  'ig_scheduled_at',
+  'ig_state',
 ] as const;
 export type CsvColumn = (typeof CSV_COLUMNS)[number];
 
@@ -42,3 +46,6 @@ export function parseBool(value: string | undefined): boolean | null {
   if (['yes', 'y', 'true', '1'].includes(v)) return true;
   return null;
 }
+
+/** Editable Instagram columns; only applied when present in the imported CSV. */
+export const INSTAGRAM_COLUMNS = ['ig_action', 'ig_scheduled_at'] as const satisfies readonly CsvColumn[];

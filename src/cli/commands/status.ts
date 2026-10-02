@@ -41,6 +41,11 @@ function render(r: StatusReport, timezone: string, print: (line?: string) => voi
   print(`Reels:        ${r.byTarget.REEL}   Page videos: ${r.byTarget.VIDEO}`);
   print(`Uploads (24h): ${r.uploads.used}/${r.uploads.limit} (all videos; DAILY_UPLOAD_LIMIT)`);
   print(`Reels quota:  ${r.quota.used}/${r.quota.limit} used (rolling 24h)`);
+  if (r.instagram) {
+    print(
+      `Instagram:    ${r.instagram.planned} planned, ${r.instagram.published} published (reel-cli instagram status)`,
+    );
+  }
 
   if (r.upcoming.length) {
     print();

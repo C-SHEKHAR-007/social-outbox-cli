@@ -33,11 +33,13 @@ export function runImport(
     if (opts.dryRun) ctx.print('Dry run: nothing changed.');
     else if (!canApply)
       ctx.print('Nothing changed. Fix the rows above (or use --partial to apply only the valid rows).');
-    else if (!plan.changes.length) ctx.print('Nothing to change.');
+    else if (!plan.changes.length && !plan.igChanges.length) ctx.print('Nothing to change.');
     else {
-      applyImport(db, plan.changes);
+      applyImport(db, plan.changes, plan.igChanges);
       applied = true;
-      ctx.print(`Updated ${plan.changes.length} video(s).`);
+      ctx.print(
+        `Updated ${plan.changes.length} video(s)${plan.igChanges.length ? ` and ${plan.igChanges.length} Instagram post(s)` : ''}.`,
+      );
       ctx.logger.info(
         { op: 'import', file, updated: plan.changes.map((c) => ({ id: c.id, fields: c.fields, state: c.toState })) },
         'csv imported',
@@ -52,7 +54,8 @@ const label = (r: RowRef) => `Row ${r.row}${r.id ? ` (#${r.id}${r.filename ? ` $
 function render(plan: ImportPlan, print: (line?: string) => void): void {
   const valid = plan.total - plan.errors.length;
   print(`${plan.total} record(s) found`);
-  print(`${valid} valid (${plan.changes.length} changed, ${plan.unchanged} unchanged)`);
+  const changedRows = new Set([...plan.changes.map((c) => c.row), ...plan.igChanges.map((c) => c.row)]).size;
+  print(`${valid} valid (${changedRows} changed, ${plan.unchanged} unchanged)`);
   print(`${plan.errors.length} invalid`);
 
   for (const e of plan.errors) {
@@ -68,6 +71,17 @@ function render(plan: ImportPlan, print: (line?: string) => void): void {
       print(`  ${label(c)}: ${c.fields.join(', ')}${state}`);
     }
   }
+  if (plan.igChanges.length) {
+    print();
+    print('Instagram:');
+    for (const c of plan.igChanges) {
+      const what = c.values.action
+        ? `${c.values.action}${c.values.scheduledAt ? ` ${c.values.scheduledAt}` : ''}`
+        : 'cleared';
+      print(`  ${label(c)}: ${c.postId === undefined ? 'new' : 'update'} → ${what} [${c.values.state}]`);
+    }
+  }
+
   if (plan.warnings.length) {
     print();
     print('Warnings:');
