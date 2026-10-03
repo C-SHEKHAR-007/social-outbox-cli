@@ -1,6 +1,6 @@
 # reel-cli: Facebook Reel Publisher
 
-A local-first command-line tool that takes a folder of videos and publishes them to a Facebook Page on a schedule, through Meta's **official Graph API**:
+A local-first command-line tool that takes a folder of videos and publishes them to a **Facebook Page** and, optionally, the linked **Instagram** account on a schedule, through Meta's **official Graph API**:
 
 - videos up to 90 s go out as **Reels**, longer ones as regular **Page videos**;
 - captions, hashtags and times are edited in a **CSV/spreadsheet**;
@@ -26,6 +26,7 @@ Design notes: [`docs/plan.md`](docs/plan.md). Facebook/Meta details: [`docs/face
    - [Scheduling: every N hours, or daily time slots](#scheduling-every-n-hours-or-daily-time-slots)
    - [First test: a private draft](#first-test-a-private-draft)
    - [Publishing and the daily routine](#publishing-and-the-daily-routine)
+   - [Instagram (optional)](#instagram-optional)
    - [Videos that fail the Reel spec (low resolution etc.)](#videos-that-fail-the-reel-spec-low-resolution-etc)
    - [Checking progress](#checking-progress)
    - [Start over / switch to another folder](#start-over--switch-to-another-folder)
@@ -41,18 +42,19 @@ Design notes: [`docs/plan.md`](docs/plan.md). Facebook/Meta details: [`docs/face
 
 ## Status
 
-| Phase | Scope                                                                             | State                                                 |
-| ----- | --------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| 0     | Verify the Meta API on a real Page                                                | ✅ app, login and a real draft Reel verified          |
-| 1     | Foundation: CLI, config, logging, SQLite + migrations, `init`, `doctor`, `status` | ✅ done                                               |
-| 2     | Scanner, ffprobe metadata, Reel/Page video spec checks                            | ✅ done                                               |
-| 3     | CSV export/import, `validate`, `show`                                             | ✅ done                                               |
-| 4     | Schedule planner                                                                  | ✅ done                                               |
-| 5     | AI captions (whisper + Ollama)                                                    | planned                                               |
-| 6     | Facebook browser login, keychain storage, `verify`                                | ✅ done                                               |
-| 7     | Publisher: Reels + Page videos, `publish` / `reconcile` / `retry` / `resume`      | ✅ done (draft verified live; first public post next) |
-| 8     | Background `worker` (submits held videos automatically)                           | planned; until then run `publish` daily               |
-| 9     | Hardening, `normalize` (re-encode to H.264/AAC)                                   | planned                                               |
+| Phase | Scope                                                                                                     | State                                                 |
+| ----- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| 0     | Verify the Meta API on a real Page                                                                        | ✅ app, login and a real draft Reel verified          |
+| 1     | Foundation: CLI, config, logging, SQLite + migrations, `init`, `doctor`, `status`                         | ✅ done                                               |
+| 2     | Scanner, ffprobe metadata, Reel/Page video spec checks                                                    | ✅ done                                               |
+| 3     | CSV export/import, `validate`, `show`                                                                     | ✅ done                                               |
+| 4     | Schedule planner                                                                                          | ✅ done                                               |
+| 5     | AI captions (whisper + Ollama)                                                                            | planned                                               |
+| 6     | Facebook browser login, keychain storage, `verify`                                                        | ✅ done                                               |
+| 7     | Publisher: Reels + Page videos, `publish` / `reconcile` / `retry` / `resume`                              | ✅ done (draft verified live; first public post next) |
+| 8     | `worker`: publishes Instagram posts at their scheduled times                                              | ✅ done (Facebook still uses `publish` daily)         |
+| 10    | **Instagram Reels**: connect, plan from the Facebook schedule, re-encode to H.264, publish via the worker | ✅ done (live Instagram test pending)                 |
+| 9     | Hardening, `normalize` (re-encode to H.264/AAC)                                                           | planned                                               |
 
 ---
 
@@ -171,6 +173,11 @@ Uploads are counted **when they are sent** (not when they go live), including up
 | `reel-cli retry [--ids] [--drafts] [--dry-run]`                                                                           | Make FAILED (and with `--drafts`, DRAFT) videos publishable again.                                                                    |
 | `reel-cli resume`                                                                                                         | Resume publishing after Facebook error 368 paused it.                                                                                 |
 | `reel-cli status`                                                                                                         | Counts by state and target, Reels quota used, upcoming and failed videos.                                                             |
+| `reel-cli instagram connect [--login]`                                                                                    | Link the Instagram professional account of your Page (adds Instagram permissions to the login if needed).                             |
+| `reel-cli instagram plan --from-facebook [--offset N] [--apply]`                                                          | Give Instagram the same videos and times as the Facebook schedule, optionally N minutes later. Preview unless `--apply`.              |
+| `reel-cli instagram publish [--dry-run]`                                                                                  | Run one Instagram cycle now: prepare what is coming, publish what is due.                                                             |
+| `reel-cli worker [--once]`                                                                                                | Keep running: prepares and publishes Instagram posts at their times (Ctrl+C to stop).                                                 |
+| `reel-cli instagram status` / `retry` / `resume`                                                                          | Instagram account and counts / reset failed posts / lift an Instagram-only pause.                                                     |
 | `reel-cli show <id>`                                                                                                      | Everything about one video: file, media, specs, caption, Facebook IDs/link, every publish attempt.                                    |
 | `reel-cli facebook login [--page id] [--port n] [--no-browser]`                                                           | Official browser login; stores the Page token in the OS keychain.                                                                     |
 | `reel-cli facebook pages [--select id]`                                                                                   | List your Pages / switch the Page to publish to (no browser needed).                                                                  |
@@ -347,6 +354,61 @@ Example `crontab -e` entry (09:30 every day; adjust the path):
 
 **Running `publish` twice is safe.** A second run skips anything already PUBLISHED/SCHEDULED/DRAFT/FAILED, only _checks_ videos still processing, resumes interrupted uploads with the same Facebook video, and a second run at the same time finds the video locked. See [Safety](#safety-why-nothing-is-posted-twice).
 
+### Instagram (optional)
+
+Instagram is handled separately from Facebook: its own schedule, state, limits and pause flag, stored in its own table. **Nothing about Facebook changes when you use it.**
+
+**How it differs from Facebook**
+
+|              | Facebook                                        | Instagram                                                                                                                            |
+| ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Scheduling   | Facebook schedules natively; your PC can be off | **No native scheduling**: `reel-cli worker` must be running at posting time                                                          |
+| Video format | your files as they are                          | re-encoded to **H.264 / AAC 48 kHz** (Instagram rejects AV1/VP9); the copy goes to `workspace/data/normalized/`, originals untouched |
+| Length       | Reels ≤ 90 s, longer = Page video               | Reels **3 s – 15 min** (longer videos can't go to Instagram)                                                                         |
+| Limits       | `DAILY_UPLOAD_LIMIT` 25/day                     | `INSTAGRAM_DAILY_LIMIT` 25/day (Instagram allows 100), same gap between posts                                                        |
+| Caption      | caption + hashtags                              | the same caption + hashtags (max 2200 chars, 30 hashtags)                                                                            |
+
+**One-time setup**
+
+1. Make your Instagram account a **Professional** (Business or Creator) account and **link it to your Facebook Page** (Instagram → Settings → Account Center, or Page settings → Linked accounts).
+2. In your Meta app, make sure the Instagram permissions `instagram_basic` and `instagram_content_publish` can be requested (add the Instagram use case/permissions if the dashboard offers them for your app).
+3. Run:
+   ```bash
+   reel-cli instagram connect      # logs in again with the Instagram permissions if needed, finds @your_account
+   reel-cli instagram status
+   ```
+   If the browser shows **"Invalid Scopes: instagram_basic, …"**, step 2 is missing (same fix as for the Page permissions).
+
+**Plan and publish**
+
+```bash
+reel-cli instagram plan --from-facebook --offset 30           # preview: same videos, 30 min after Facebook
+reel-cli instagram plan --from-facebook --offset 30 --apply    # save
+reel-cli instagram publish --dry-run                           # what the next cycle would do
+reel-cli worker                                                # keep this running (or as a service, below)
+```
+
+Or per video in the CSV: `ig_action` (`POST_NOW` / `SCHEDULE` / `SKIP` / empty), `ig_scheduled_at` and the read-only `ig_state`. These columns are optional: older CSVs still import and leave Instagram untouched.
+
+What the worker does every 30 s (`WORKER_INTERVAL_SECONDS`): about `INSTAGRAM_PREPARE_HOURS` (3) before a post's time it **prepares** it (re-encode, upload, wait until Instagram has processed it; nothing is public yet), and at the time it **publishes** it and saves the Instagram link. If a publish reply is lost, it checks with Instagram instead of re-posting. Only one worker runs at a time.
+
+Run the worker in the background on Linux with a user service (`~/.config/systemd/user/reel-worker.service`):
+
+```ini
+[Unit]
+Description=reel-cli worker
+
+[Service]
+WorkingDirectory=/path/to/Facebook Reel Automation Tool
+ExecStart=/path/to/node /path/to/Facebook Reel Automation Tool/dist/cli/index.js worker
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+then `systemctl --user enable --now reel-worker` (logs: `journalctl --user -u reel-worker -f`). Your computer has to be on (and online) at Instagram posting times; posts missed while it was off go out on the next cycle, still respecting the limits.
+
 ### Videos that fail the Reel spec (low resolution etc.)
 
 A video that fails the Reel spec (e.g. 360×640, 20 fps) cannot go out as a Reel, but can as a **regular Page video**, which has no resolution/fps minimum:
@@ -425,6 +487,9 @@ All settings are validated at startup (an invalid value names the variable). Rea
 | `DAILY_UPLOAD_LIMIT`                                             | `25`                                | Uploads of any kind per rolling 24 h (Facebook anti-spam)                            |
 | `MIN_UPLOAD_GAP_SECONDS`                                         | `120`                               | Minimum seconds between two uploads                                                  |
 | `PUBLISH_CONCURRENCY`                                            | `1`                                 | Videos uploaded in parallel by `publish` (1–5); keep 1 to avoid bursts               |
+| `INSTAGRAM_DAILY_LIMIT`                                          | `25`                                | Instagram posts per rolling 24 h (Instagram allows 100)                              |
+| `INSTAGRAM_PREPARE_HOURS`                                        | `3`                                 | Re-encode and upload this many hours before an Instagram post's time (max 20)        |
+| `WORKER_INTERVAL_SECONDS`                                        | `30`                                | How often `reel-cli worker` runs a cycle                                             |
 | `REEL_WORKSPACE`                                                 | –                                   | Environment variable: use this folder as the workspace (see _Where your data lives_) |
 | `DATABASE_URL`                                                   | `./data/reels.db`                   | SQLite database location, relative to the workspace                                  |
 | `LOG_LEVEL`                                                      | `info`                              | `fatal` … `trace`                                                                    |
@@ -451,6 +516,10 @@ All settings are validated at startup (an invalid value names the variable). Rea
 | Publish: **"scheduled_at is in the past or less than 10 minutes away"**     | Facebook needs ≥ 10 minutes' notice. Move the time, or use `POST_NOW`.                                                                                                                                              |
 | Publish: `Not a terminal: add --yes`                                        | Non-interactive runs (cron, scripts) need `--yes`.                                                                                                                                                                  |
 | Videos `HELD` with "daily upload limit reached" / "Reels 24h quota reached" | Expected: run `reel-cli publish` again the next day (or schedule fewer videos per day).                                                                                                                             |
+| Instagram: **"Invalid Scopes: instagram_basic, …"** in the browser          | Your Meta app can't request the Instagram permissions yet; add them in the app dashboard (Instagram use case), then `reel-cli instagram connect --login`.                                                           |
+| Instagram: "No Instagram professional account is linked"                    | Switch Instagram to a Professional account and link it to the Page, then `reel-cli instagram connect`.                                                                                                              |
+| Instagram posts don't go out at their time                                  | The worker isn't running: start `reel-cli worker` (or the systemd service). `reel-cli instagram status` shows what is waiting.                                                                                      |
+| Instagram is PAUSED                                                         | Instagram flagged an action (e.g. posting too fast). Wait, then `reel-cli instagram resume`. Facebook is not affected.                                                                                              |
 | **Error 368/1390008**, "blocked … going too fast", publishing PAUSED        | Facebook's anti-spam block. **Wait at least 24 h** (don't retry in between), check Meta Business Suite for warnings, then `reel-cli resume` and publish in small batches (the default limits: 25/day, 120 s apart). |
 | **"Publishing is paused (Facebook error 368)"** (other sub-codes)           | Facebook flagged an action as abusive/disallowed. Check the Page in Meta Business Suite (notifications, Page quality), then `reel-cli resume`.                                                                      |
 | A video is `FINISHING` / result "unknown"                                   | Run `reel-cli reconcile`. It asks Facebook and never re-posts.                                                                                                                                                      |
@@ -468,6 +537,8 @@ All settings are validated at startup (an invalid value names the variable). Rea
 - **No re-encoding yet** (Phase 9): most videos are VP9/AV1 with HE-AAC 44.1 kHz audio. Facebook accepts them (verified with a real draft), but H.264/AAC 48 kHz is recommended.
 - A **draft cannot be published without re-uploading** it (or publish it by hand in Business Suite).
 - An interrupted **Page video** upload restarts from zero (Facebook's chunk sessions can't be resumed later).
+- **Instagram** needs `reel-cli worker` running at posting time (no native scheduling), and only takes videos up to 15 minutes. Photos, carousels and Stories are not supported yet.
+- Instagram re-encoding uses CPU (about 4× faster than real time on a typical laptop) and keeps a converted copy per video in `workspace/data/normalized/`.
 - The Reels API limit of 90 s comes from Meta's docs. Whether longer Reels work through the API is unverified (docs/facebook-api.md, Q7), so longer videos are posted as Page videos.
 
 ---
@@ -515,6 +586,7 @@ src/
 ├── validation/          # pre-publish validation
 ├── facebook/            # Graph client, errors, browser login, token store, upload APIs
 ├── publisher/           # publish decisions, remote status, leases, attempts, publisher, publish run
+├── instagram/           # Instagram API client, connect, publisher, cycle, plan-from-Facebook
 ├── status/              # status report
 ├── doctor/              # environment checks
 └── utils/               # dates, errors, logger, time, open-url, package root

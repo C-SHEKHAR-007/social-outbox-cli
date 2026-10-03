@@ -617,3 +617,14 @@ Phases 0–3: `init`, `doctor`, `scan`, `export`, `import`, `validate`, `status`
 - No fake Facebook implementations presented as working; anything not yet verified is written up in `docs/facebook-api.md`.
 - Errors are typed (`TransientError`, `PermanentError`, `FatalRunError`, `ValidationError`) and handled explicitly.
 - README updated with every phase.
+
+---
+
+## Phase 10: Instagram (implemented 2026-10-04, branch `feature/instagram`)
+
+- **Data:** new table `platform_posts` (one row per video per extra platform: action, schedule, state, container/media ids, retries, lease, version) and `publish_attempts.platform` (default `facebook`). Additive migration: Facebook state stays on `videos`; verified on a copy of the real database (identical fingerprints and Facebook publish plan).
+- **API:** Instagram API with Facebook Login (Page token + `instagram_basic`, `instagram_content_publish`): resumable REELS container → `rupload.facebook.com/ig-api-upload` → `status_code` FINISHED → `media_publish`. 100 posts/24 h per Instagram; no native scheduling; containers expire after 24 h.
+- **Media:** Instagram needs H.264/HEVC + AAC ≤ 48 kHz, 23–60 fps, ≤ 1920 px wide, ≤ 300 MB, 3 s–15 min. Non-compliant files (most sources are AV1/VP9) are re-encoded to H.264/AAC into `workspace/data/normalized/` (cached by hash); originals and Facebook uploads are untouched.
+- **Publishing:** prepare `INSTAGRAM_PREPARE_HOURS` (3) ahead, publish at the time from `reel-cli worker`; `PUBLISHING` saved before `media_publish`, lost replies settled from the container status and recent media. Own daily limit (`INSTAGRAM_DAILY_LIMIT`, 25), shared gap, own lease and own pause flag (368 pauses Instagram only).
+- **Commands:** `instagram connect | status | plan --from-facebook | publish | retry | resume`, `worker`; CSV columns `ig_action`, `ig_scheduled_at`, `ig_state` (optional on import).
+- **Still to do live:** connect a real Instagram professional account, then one private-ish test post; photos, carousels and Stories later.
