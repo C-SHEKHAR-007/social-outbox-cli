@@ -584,6 +584,8 @@ GraphClient (versioned, typed errors, redaction), `facebook login`, `facebook pa
 
 ### Phase 8: Worker
 
+> Implemented 2026-10-04 for **Instagram** (`reel-cli worker`, see Phase 10). Facebook schedules natively, so its held videos are still submitted by a daily `reel-cli publish`.
+
 Loop §10.4, leases, worker lock, graceful shutdown, HELD hand-off, status polling, `resume`, systemd unit docs.
 
 ### Phase 9: Hardening

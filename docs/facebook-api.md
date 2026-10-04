@@ -1,5 +1,7 @@
 # Facebook Graph API — Phase 0 test and findings
 
+> Instagram is documented separately in [`instagram-api.md`](instagram-api.md).
+
 Goal: prove the Meta app, token and permissions work, and answer the open questions in `docs/plan.md` §2.7 **before** writing any publishing code. Everything here uses `curl`; nothing depends on the project code.
 
 > Use a **test Page** if you have one. DRAFT uploads are not public, but the SCHEDULED test below will go live unless you delete it.

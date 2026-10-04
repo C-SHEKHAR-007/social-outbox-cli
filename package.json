@@ -1,7 +1,7 @@
 {
   "name": "facebook-reel-publisher",
   "version": "0.1.0",
-  "description": "Local-first CLI to scan, caption, schedule and publish Facebook Reels via the official Graph API",
+  "description": "Local-first CLI to scan, caption, schedule and publish videos to a Facebook Page (Reels and videos) and Instagram (Reels) via the official Graph API",
   "type": "module",
   "private": true,
   "bin": {
