@@ -76,6 +76,7 @@ describe('runChecks', () => {
     expect(r.database?.detail).toBe(`0 video(s), ${MIGRATION_COUNT} migration(s)`);
     expect(r.ollama?.status).toBe('ok');
     expect(r.facebook?.status).toBe('warn');
+    expect(r.instagram).toMatchObject({ status: 'ok', detail: 'not connected (optional: reel-cli instagram connect)' });
   });
 
   it('warns when the Ollama model is not pulled', async () => {

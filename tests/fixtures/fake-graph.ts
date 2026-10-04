@@ -24,6 +24,7 @@ export function fakeGraph(routes: Record<string, Route>) {
     const path = url.pathname
       .replace(/^\/v\d+\.\d+\//, '')
       .replace(/^\/video-upload\/v\d+\.\d+\//, 'video-upload/')
+      .replace(/^\/ig-api-upload\/v\d+\.\d+\//, 'ig-api-upload/')
       .replace(/^\//, '');
     const params: Record<string, string> = Object.fromEntries(url.searchParams);
     let bodyBytes: number | undefined;

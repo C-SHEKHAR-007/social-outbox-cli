@@ -9,6 +9,15 @@ import { runExport } from './commands/export.js';
 import { runFacebookLogin, runFacebookLogout, runFacebookPages, runFacebookVerify } from './commands/facebook.js';
 import { runImport } from './commands/import.js';
 import { runInit } from './commands/init.js';
+import {
+  runInstagramConnect,
+  runInstagramPlan,
+  runInstagramPublish,
+  runInstagramResume,
+  runInstagramRetry,
+  runInstagramStatus,
+} from './commands/instagram.js';
+import { runWorker } from './commands/worker.js';
 import { runPublishCommand, runReconcileCommand, runResume, runRetry } from './commands/publish.js';
 import { runRecheck } from './commands/recheck.js';
 import { runScan } from './commands/scan.js';
@@ -214,6 +223,71 @@ facebook
   .description('remove stored Facebook tokens')
   .action(() => {
     runFacebookLogout(workspace());
+  });
+
+const instagram = program
+  .command('instagram')
+  .description('publish Reels to the Instagram account linked to your Facebook Page');
+
+instagram
+  .command('connect')
+  .description('link the Instagram professional account of your Page (adds Instagram permissions if needed)')
+  .option('--login', 'always run the browser login again')
+  .option('--port <port>', 'local callback port (default FACEBOOK_OAUTH_PORT, 8585)')
+  .option('--no-browser', 'print the login URL instead of opening a browser')
+  .action(async (options: { login?: boolean; port?: string; browser?: boolean }) => {
+    await runInstagramConnect(workspace(), options);
+  });
+
+instagram
+  .command('plan')
+  .description('give Instagram the same videos and times as the Facebook schedule (preview unless --apply)')
+  .option('--from-facebook', 'mirror the Facebook schedule')
+  .option('--offset <minutes>', 'shift Instagram times by this many minutes (e.g. 30)')
+  .option('--ids <ids>', 'only these video ids')
+  .option('--apply', 'save the plan')
+  .action((options: { fromFacebook?: boolean; offset?: string; ids?: string; apply?: boolean }) => {
+    runInstagramPlan(workspace(), { ...options, ids: parseIds(options.ids) });
+  });
+
+instagram
+  .command('publish')
+  .description('run one Instagram cycle now: prepare what is coming, publish what is due')
+  .option('--dry-run', 'show what would happen without sending anything')
+  .option('--ids <ids>', 'only these video ids')
+  .action(async (options: { dryRun?: boolean; ids?: string }) => {
+    process.exitCode = (await runInstagramPublish(workspace(), { ...options, ids: parseIds(options.ids) })).code;
+  });
+
+instagram
+  .command('retry')
+  .description('make FAILED Instagram posts publishable again')
+  .option('--ids <ids>', 'only these video ids')
+  .action((options: { ids?: string }) => {
+    runInstagramRetry(workspace(), { ids: parseIds(options.ids) });
+  });
+
+instagram
+  .command('resume')
+  .description('resume Instagram publishing after it was paused (Facebook is not affected)')
+  .action(() => {
+    runInstagramResume(workspace());
+  });
+
+instagram
+  .command('status')
+  .description('Instagram account, posts by state and 24h usage')
+  .action(async () => {
+    await runInstagramStatus(workspace());
+  });
+
+program
+  .command('worker')
+  .description('keep running: prepare and publish Instagram posts at their scheduled times (Ctrl+C to stop)')
+  .option('--once', 'run a single cycle and exit')
+  .option('--interval <seconds>', 'seconds between cycles (default WORKER_INTERVAL_SECONDS, 30)')
+  .action(async (options: { once?: boolean; interval?: string }) => {
+    process.exitCode = await runWorker(workspace(), options);
   });
 
 program.parseAsync(process.argv).catch((err: unknown) => {

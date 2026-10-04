@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import {
   ACTIONS,
   ATTEMPT_OUTCOMES,
@@ -10,6 +10,7 @@ import {
   VIDEO_STATES,
 } from '../domain/states.js';
 import type { MediaInfo, SpecIssue } from '../domain/media.js';
+import { PLATFORMS, POST_KINDS, POST_STATES } from '../domain/platforms.js';
 
 const nowIso = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 
@@ -96,6 +97,8 @@ export const publishAttempts = sqliteTable(
     videoId: integer('video_id')
       .notNull()
       .references(() => videos.id),
+    /** 'facebook' for the Facebook publisher (all rows before Instagram support), else a platform_posts platform. */
+    platform: text('platform').notNull().default('facebook'),
     step: text('step', { enum: ATTEMPT_STEPS }).notNull(),
     startedAt: text('started_at').notNull().default(nowIso),
     endedAt: text('ended_at'),
@@ -109,6 +112,51 @@ export const publishAttempts = sqliteTable(
   (t) => [index('publish_attempts_video_id_idx').on(t.videoId)],
 );
 
+/**
+ * One post of a video on a platform other than Facebook (Facebook state stays on `videos`).
+ * Content (caption, hashtags) is shared with the video; schedule and state are per platform.
+ */
+export const platformPosts = sqliteTable(
+  'platform_posts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    videoId: integer('video_id')
+      .notNull()
+      .references(() => videos.id),
+    platform: text('platform', { enum: PLATFORMS }).notNull(),
+    kind: text('kind', { enum: POST_KINDS }).notNull().default('REELS'),
+    action: text('action', { enum: ACTIONS }),
+    scheduledAt: text('scheduled_at'), // ISO-8601 UTC
+    state: text('state', { enum: POST_STATES }).notNull().default('NEW'),
+
+    /** File actually uploaded (e.g. re-encoded to H.264 for Instagram). */
+    uploadPath: text('upload_path'),
+    /** Instagram media container id: saved before any bytes are sent. */
+    containerId: text('container_id').unique(),
+    containerCreatedAt: text('container_created_at'),
+    mediaId: text('media_id').unique(),
+    permalink: text('permalink'),
+    publishSentAt: text('publish_sent_at'),
+    publishedAt: text('published_at'),
+
+    retryCount: integer('retry_count').notNull().default(0),
+    nextAttemptAt: text('next_attempt_at'),
+    lastErrorCode: text('last_error_code'),
+    lastError: text('last_error'),
+    lockedBy: text('locked_by'),
+    lockExpiresAt: text('lock_expires_at'),
+
+    version: integer('version').notNull().default(1),
+    createdAt: text('created_at').notNull().default(nowIso),
+    updatedAt: text('updated_at').notNull().default(nowIso),
+  },
+  (t) => [
+    uniqueIndex('platform_posts_video_platform_idx').on(t.videoId, t.platform),
+    index('platform_posts_state_idx').on(t.platform, t.state),
+    index('platform_posts_publish_sent_idx').on(t.platform, t.publishSentAt),
+  ],
+);
+
 export const appState = sqliteTable('app_state', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
@@ -118,3 +166,5 @@ export const appState = sqliteTable('app_state', {
 export type Video = typeof videos.$inferSelect;
 export type NewVideo = typeof videos.$inferInsert;
 export type PublishAttempt = typeof publishAttempts.$inferSelect;
+export type PlatformPost = typeof platformPosts.$inferSelect;
+export type NewPlatformPost = typeof platformPosts.$inferInsert;

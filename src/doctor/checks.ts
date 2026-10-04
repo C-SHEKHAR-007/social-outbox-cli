@@ -64,7 +64,36 @@ export async function runChecks(deps: DoctorDeps): Promise<CheckResult[]> {
       deps.tokenStore ?? createTokenStore(join(resolvePaths(deps.cwd, config.databaseUrl).data, 'credentials.json')),
     ),
   );
+  results.push(checkInstagram(deps.cwd, config));
   return results;
+}
+
+/** Informational only: Instagram is optional. */
+function checkInstagram(cwd: string, config: AppConfig): CheckResult {
+  const paths = resolvePaths(cwd, config.databaseUrl);
+  if (paths.db !== ':memory:' && !existsSync(paths.db)) {
+    return { name: 'instagram', status: 'ok', detail: 'not connected (optional)' };
+  }
+  const handle = openDatabase(paths.db);
+  try {
+    const id = getAppState(handle.db, 'instagram_user_id');
+    if (!id) return { name: 'instagram', status: 'ok', detail: 'not connected (optional: reel-cli instagram connect)' };
+    const user = getAppState(handle.db, 'instagram_username');
+    if (getAppState(handle.db, 'instagram_paused') === 'true') {
+      return {
+        name: 'instagram',
+        status: 'warn',
+        detail: `${user ? `@${user}` : id} PAUSED (reel-cli instagram resume)`,
+      };
+    }
+    return {
+      name: 'instagram',
+      status: 'ok',
+      detail: `${user ? `@${user} ` : ''}(${id}); posts at their time while \`reel-cli worker\` runs`,
+    };
+  } finally {
+    handle.close();
+  }
 }
 
 export function checkNode(version: string): CheckResult {

@@ -3,6 +3,7 @@ import { isPublishingPaused, getAppState } from '../db/app-state.js';
 import type { Db } from '../db/client.js';
 import { videos } from '../db/schema.js';
 import { VIDEO_STATES, type PublishTarget, type VideoState } from '../domain/states.js';
+import { countPostsByState } from '../db/platform-post-repository.js';
 import { quotaUsed, uploadsUsed } from '../scheduling/quota.js';
 import { toIso } from '../utils/time.js';
 
@@ -15,6 +16,8 @@ export interface StatusReport {
   paused: { paused: boolean; reason: string | undefined };
   upcoming: Array<{ id: number; filename: string; state: VideoState; target: PublishTarget; scheduledAt: string }>;
   failed: Array<{ id: number; filename: string; error: string }>;
+  /** Only when Instagram posts exist. */
+  instagram?: { planned: number; published: number };
 }
 
 const UPCOMING_STATES: VideoState[] = ['READY', 'HELD', 'SCHEDULED'];
@@ -79,5 +82,14 @@ export function getStatusReport(
     paused: { paused: isPublishingPaused(db), reason: getAppState(db, 'paused_reason') },
     upcoming,
     failed,
+    instagram: instagramSummary(db),
   };
+}
+
+function instagramSummary(db: Db): StatusReport['instagram'] {
+  const c = countPostsByState(db, 'instagram');
+  const total = Object.values(c).reduce((a, b) => a + b, 0);
+  if (!total) return undefined;
+  const published = c.PUBLISHED ?? 0;
+  return { planned: total - published - (c.SKIPPED ?? 0) - (c.NEW ?? 0), published };
 }

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getAppState, isPublishingPaused, setAppState } from '../../src/db/app-state.js';
 import { appliedMigrationCount, openDatabase, type DbHandle } from '../../src/db/client.js';
 import { MIGRATION_COUNT } from '../helpers.js';
-import { publishAttempts, videos, type NewVideo } from '../../src/db/schema.js';
+import { platformPosts, publishAttempts, videos, type NewVideo } from '../../src/db/schema.js';
 
 const video = (over: Partial<NewVideo> = {}): NewVideo => ({
   fileHash: 'a'.repeat(64),
@@ -87,5 +87,17 @@ describe('database', () => {
     setAppState(h.db, 'publishing_paused', 'false');
     expect(isPublishingPaused(h.db)).toBe(false);
     expect(getAppState(h.db, 'paused_reason')).toBe('error 368');
+  });
+
+  it('platform_posts: one post per video per platform, attempts default to facebook', () => {
+    const v = h.db.insert(videos).values(video()).returning().get();
+    const post = h.db.insert(platformPosts).values({ videoId: v.id, platform: 'instagram' }).returning().get();
+    expect(post).toMatchObject({ kind: 'REELS', state: 'NEW', version: 1, retryCount: 0 });
+    expect(() => h.db.insert(platformPosts).values({ videoId: v.id, platform: 'instagram' }).run()).toThrow(/UNIQUE/);
+    expect(() => h.db.insert(platformPosts).values({ videoId: 99999, platform: 'instagram' }).run()).toThrow(
+      /FOREIGN KEY/,
+    );
+    const attempt = h.db.insert(publishAttempts).values({ videoId: v.id, step: 'START' }).returning().get();
+    expect(attempt.platform).toBe('facebook');
   });
 });

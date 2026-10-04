@@ -10,7 +10,10 @@ import { isSubmitted, stateAfterActionChange } from '../domain/transitions.js';
 import { parseUserDateTime } from '../utils/dates.js';
 import { UserError } from '../utils/errors.js';
 import { toIso } from '../utils/time.js';
-import { CSV_COLUMNS, parseBool, REQUIRED_COLUMNS, type CsvRow } from './columns.js';
+import { CSV_COLUMNS, INSTAGRAM_COLUMNS, parseBool, REQUIRED_COLUMNS, type CsvRow } from './columns.js';
+import { findPost, insertPost, updatePostIfVersion } from '../db/platform-post-repository.js';
+import { isPostSubmitted, type PostState } from '../domain/platforms.js';
+import { instagramBlockers } from '../media/instagram-spec.js';
 
 /** States where `--force` may override a version conflict. */
 const FORCEABLE_STATES: readonly VideoState[] = ['NEW', 'READY', 'FAILED', 'SKIPPED'];
@@ -31,9 +34,19 @@ export interface RowChange extends RowRef {
   toState: VideoState;
 }
 
+/** A change to a video's Instagram post (create, re-time, skip or clear). */
+export interface InstagramChange extends RowRef {
+  videoId: number;
+  postId: number | undefined;
+  expectedVersion: number | undefined;
+  values: { action: Action | null; scheduledAt: string | null; state: PostState };
+}
+
 export interface ImportPlan {
   total: number;
   changes: RowChange[];
+  /** Instagram changes (only when the CSV has the ig_* columns). */
+  igChanges: InstagramChange[];
   unchanged: number;
   errors: Array<RowRef & { messages: string[] }>;
   warnings: Array<RowRef & { message: string }>;
@@ -88,7 +101,8 @@ export function planImport(db: Db, text: string, opts: ImportOptions): ImportPla
     );
   }
 
-  const plan: ImportPlan = { total: rows.length, changes: [], unchanged: 0, errors: [], warnings: [] };
+  const plan: ImportPlan = { total: rows.length, changes: [], igChanges: [], unchanged: 0, errors: [], warnings: [] };
+  const hasInstagram = INSTAGRAM_COLUMNS.every((c) => header.includes(c));
   const seenIds = new Map<number, number>();
 
   rows.forEach((row, index) => {
@@ -129,11 +143,13 @@ export function planImport(db: Db, text: string, opts: ImportOptions): ImportPla
     }
     const version = Number(clean(row.version));
     if (!Number.isInteger(version)) messages.push(`Invalid version: "${clean(row.version)}"`);
+    const ig = hasInstagram ? planInstagramRow(db, row, video, ref, opts, messages, plan) : undefined;
     if (!parsed || messages.length) return fail();
 
     const { fields, values } = diff(video, parsed, reelMax);
     if (!fields.length) {
-      plan.unchanged += 1;
+      if (ig) plan.igChanges.push(ig);
+      else plan.unchanged += 1;
       return;
     }
 
@@ -169,6 +185,7 @@ export function planImport(db: Db, text: string, opts: ImportOptions): ImportPla
     }
 
     plan.changes.push({ ...ref, id, expectedVersion: video.version, fields, values, fromState: video.state, toState });
+    if (ig) plan.igChanges.push(ig);
   });
 
   return plan;
@@ -258,8 +275,16 @@ function sameInstant(a: string | null, b: string | null): boolean {
 export class ImportConflictError extends UserError {}
 
 /** Applies every change in one transaction; any concurrent modification rolls back everything. */
-export function applyImport(db: Db, changes: RowChange[]): void {
+export function applyImport(db: Db, changes: RowChange[], igChanges: InstagramChange[] = []): void {
   runInTransaction(db, (tx) => {
+    for (const c of igChanges) {
+      if (c.postId === undefined) insertPost(tx, { videoId: c.videoId, platform: 'instagram', ...c.values });
+      else if (!updatePostIfVersion(tx, c.postId, c.expectedVersion ?? -1, { ...c.values, lastError: null })) {
+        throw new ImportConflictError(
+          `Row ${c.row} (#${c.videoId}) Instagram post changed during import; nothing was changed. Try again.`,
+        );
+      }
+    }
     for (const c of changes) {
       if (!updateVideoIfVersion(tx, c.id, c.expectedVersion, c.values)) {
         throw new ImportConflictError(
@@ -268,4 +293,68 @@ export function applyImport(db: Db, changes: RowChange[]): void {
       }
     }
   });
+}
+
+/**
+ * Plans the Instagram columns of one row. Facebook columns are handled separately and are not affected:
+ * an Instagram edit is allowed even when the video is already scheduled on Facebook.
+ */
+function planInstagramRow(
+  db: Db,
+  row: CsvRow,
+  video: Video,
+  ref: RowRef,
+  opts: ImportOptions,
+  messages: string[],
+  plan: ImportPlan,
+): InstagramChange | undefined {
+  const actionText = clean(row.ig_action).toUpperCase();
+  let action: Action | null = null;
+  if (actionText) {
+    if ((ACTIONS as readonly string[]).includes(actionText)) action = actionText as Action;
+    else {
+      messages.push(`Invalid ig_action: ${clean(row.ig_action)} (use ${ACTIONS.join(', ')} or leave empty)`);
+      return undefined;
+    }
+  }
+  const timeText = clean(row.ig_scheduled_at);
+  let scheduledAt: string | null = null;
+  if (timeText) {
+    const date = parseUserDateTime(timeText, opts.timezone);
+    if (!date) {
+      messages.push(`Invalid ig_scheduled_at: "${timeText}" (use YYYY-MM-DD HH:mm, ${opts.timezone})`);
+      return undefined;
+    }
+    scheduledAt = toIso(date);
+  } else if (action === 'SCHEDULE') {
+    messages.push('ig_scheduled_at is required when ig_action is SCHEDULE');
+    return undefined;
+  }
+
+  const existing = findPost(db, video.id, 'instagram');
+  if (!existing && action === null) return undefined;
+  if (existing && existing.action === action && sameInstant(existing.scheduledAt, scheduledAt)) return undefined;
+  if (existing && isPostSubmitted(existing.state)) {
+    messages.push(`Cannot edit Instagram columns: already sent to Instagram (state ${existing.state})`);
+    return undefined;
+  }
+  if ((action === 'POST_NOW' || action === 'SCHEDULE') && video.mediaInfo) {
+    const blockers = instagramBlockers(video.mediaInfo, video.fileSize);
+    if (blockers.length) {
+      messages.push(`Not possible on Instagram: ${blockers.join('; ')}`);
+      return undefined;
+    }
+  }
+  if (action === 'SCHEDULE' && scheduledAt && Date.parse(scheduledAt) < opts.now.getTime() + MIN_LEAD_MS) {
+    plan.warnings.push({ ...ref, message: 'ig_scheduled_at is in the past or less than 10 minutes away' });
+  }
+  const state: PostState =
+    action === 'SKIP' ? 'SKIPPED' : existing?.state === 'FAILED' ? 'FAILED' : action === null ? 'NEW' : 'READY';
+  return {
+    ...ref,
+    videoId: video.id,
+    postId: existing?.id,
+    expectedVersion: existing?.version,
+    values: { action, scheduledAt, state },
+  };
 }

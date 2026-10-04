@@ -116,6 +116,20 @@ export class GraphClient {
     return this.send(url, { method: 'POST', headers, body: data }, schema, this.opts.uploadTimeoutMs ?? 15 * 60_000);
   }
 
+  /** Instagram resumable upload to rupload.facebook.com/ig-api-upload (resumable via `offset`). */
+  async uploadInstagramBinary<T>(
+    containerId: string,
+    token: string,
+    data: Uint8Array,
+    offset: number,
+    fileSize: number,
+    schema: z.ZodType<T>,
+  ): Promise<T> {
+    const url = new URL(`${RUPLOAD_HOST}/ig-api-upload/${this.opts.version}/${containerId}`);
+    const headers = { Authorization: `OAuth ${token}`, offset: String(offset), file_size: String(fileSize) };
+    return this.send(url, { method: 'POST', headers, body: data }, schema, this.opts.uploadTimeoutMs ?? 15 * 60_000);
+  }
+
   private url(path: string, host = GRAPH_HOST): URL {
     return new URL(`${host}/${this.opts.version}/${path.replace(/^\//, '')}`);
   }

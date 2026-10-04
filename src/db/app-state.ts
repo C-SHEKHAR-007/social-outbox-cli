@@ -3,7 +3,16 @@ import type { Db } from './client.js';
 import { appState } from './schema.js';
 import { nowIso } from '../utils/time.js';
 
-export type AppStateKey = 'publishing_paused' | 'paused_reason' | 'page_id' | 'page_name' | 'token_checked_at';
+export type AppStateKey =
+  | 'publishing_paused'
+  | 'paused_reason'
+  | 'page_id'
+  | 'page_name'
+  | 'token_checked_at'
+  | 'instagram_user_id'
+  | 'instagram_username'
+  | 'instagram_paused'
+  | 'instagram_paused_reason';
 
 export function getAppState(db: Db, key: AppStateKey): string | undefined {
   return db.select().from(appState).where(eq(appState.key, key)).get()?.value;
