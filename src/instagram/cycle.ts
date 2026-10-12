@@ -63,8 +63,11 @@ export async function runInstagramCycle(
   const posts = listPosts(db, 'instagram').filter(
     (p) => (!opts.ids || opts.ids.includes(p.videoId)) && (p.action === 'POST_NOW' || p.action === 'SCHEDULE'),
   );
+  // POST_NOW is due at once; createdAt only orders it. It comes from the wall clock, so cap it at `now`.
   const dueOf = (p: PlatformPost) =>
-    p.action === 'SCHEDULE' && p.scheduledAt ? new Date(p.scheduledAt) : new Date(p.createdAt);
+    p.action === 'SCHEDULE' && p.scheduledAt
+      ? new Date(p.scheduledAt)
+      : new Date(Math.min(Date.parse(p.createdAt), now.getTime()));
   const item = (p: PlatformPost, action: CycleAction, extra: Partial<CycleItem> = {}): CycleItem => ({
     post: p,
     video: findVideoById(db, p.videoId),
