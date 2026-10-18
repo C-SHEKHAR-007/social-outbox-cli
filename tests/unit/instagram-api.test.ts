@@ -60,6 +60,18 @@ describe('Instagram API client', () => {
     await expect(igUpload(client(bad), 'C1', TOKEN, new Uint8Array(1), 0, 1)).rejects.toThrow(/not accepted: nope/);
   });
 
+  it('reports rupload debug_info errors instead of "Facebook error ?"', async () => {
+    const g = fakeGraph({
+      'ig-api-upload/C1': () => ({
+        status: 400,
+        body: { debug_info: { retriable: false, type: 'ProcessingFailedError', message: 'Request processing failed' } },
+      }),
+    });
+    await expect(igUpload(client(g), 'C1', TOKEN, new Uint8Array(1), 0, 1)).rejects.toThrow(
+      'ProcessingFailedError: Request processing failed (HTTP 400)',
+    );
+  });
+
   it('reads container status and maps unknown codes safely', async () => {
     const g = fakeGraph({
       C1: () => ({ body: { status_code: 'FINISHED', status: 'Finished: Media has been uploaded', id: 'C1' } }),
