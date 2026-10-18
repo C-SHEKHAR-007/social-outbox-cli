@@ -323,7 +323,7 @@ describe('CSV export/import', () => {
       expect(planImport(h.db, csv, opts).errors.map((e) => e.messages[0])).toEqual([
         'Invalid ig_action: SEND (use POST_NOW, SCHEDULE, SKIP or leave empty)',
         'ig_scheduled_at is required when ig_action is SCHEDULE',
-        'Not possible on Instagram: duration 20.0 min > 15 min (Instagram limit)',
+        'Not possible on Instagram: duration 1200 s > 90 s (Instagram API limit)',
       ]);
     });
 

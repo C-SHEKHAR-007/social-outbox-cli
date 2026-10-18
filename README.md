@@ -364,7 +364,7 @@ Instagram is handled separately from Facebook: its own schedule, state, limits a
 | ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Scheduling   | Facebook schedules natively; your PC can be off | **No native scheduling**: `reel-cli worker` must be running at posting time                                                          |
 | Video format | your files as they are                          | re-encoded to **H.264 / AAC 48 kHz** (Instagram rejects AV1/VP9); the copy goes to `workspace/data/normalized/`, originals untouched |
-| Length       | Reels ≤ 90 s, longer = Page video               | Reels **3 s – 15 min** (longer videos can't go to Instagram)                                                                         |
+| Length       | Reels ≤ 90 s, longer = Page video               | Reels **3 s – 90 s** (Meta's reference says 15 min, but longer uploads fail; longer videos stay Facebook-only)                       |
 | Limits       | `DAILY_UPLOAD_LIMIT` 25/day                     | `INSTAGRAM_DAILY_LIMIT` 25/day (Instagram allows 100), same gap between posts                                                        |
 | Caption      | caption + hashtags                              | the same caption + hashtags (max 2200 chars, 30 hashtags)                                                                            |
 
@@ -537,7 +537,7 @@ All settings are validated at startup (an invalid value names the variable). Rea
 - **No re-encoding yet** (Phase 9): most videos are VP9/AV1 with HE-AAC 44.1 kHz audio. Facebook accepts them (verified with a real draft), but H.264/AAC 48 kHz is recommended.
 - A **draft cannot be published without re-uploading** it (or publish it by hand in Business Suite).
 - An interrupted **Page video** upload restarts from zero (Facebook's chunk sessions can't be resumed later).
-- **Instagram** needs `reel-cli worker` running at posting time (no native scheduling), and only takes videos up to 15 minutes. Photos, carousels and Stories are not supported yet.
+- **Instagram** needs `reel-cli worker` running at posting time (no native scheduling), and only takes videos up to 90 seconds (Meta's reference says 15 minutes, but longer uploads fail). Photos, carousels and Stories are not supported yet.
 - Instagram re-encoding uses CPU (about 4× faster than real time on a typical laptop) and keeps a converted copy per video in `workspace/data/normalized/`.
 - The Reels API limit of 90 s comes from Meta's docs. Whether longer Reels work through the API is unverified (docs/facebook-api.md, Q7), so longer videos are posted as Page videos.
 

@@ -201,7 +201,7 @@ describe('Instagram publisher', () => {
   it('refuses videos Instagram cannot take and skips empty captions', async () => {
     const long = post(video({ durationS: 20 * 60, mediaInfo: mediaInfo({ durationS: 20 * 60 }) }).id);
     expect(await prepareInstagramPost(deps(), long.id)).toMatchObject({ result: 'failed' });
-    expect(row(long.id).lastError).toContain('20.0 min > 15 min');
+    expect(row(long.id).lastError).toContain('1200 s > 90 s');
     const empty = post(video({ caption: '' }).id);
     expect(await prepareInstagramPost(deps(), empty.id)).toMatchObject({
       result: 'skipped',

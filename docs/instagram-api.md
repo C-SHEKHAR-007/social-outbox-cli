@@ -43,7 +43,7 @@ GET /{page-id}?fields=instagram_business_account{id,username}
 | Size       | width ≤ 1920 px; aspect 0.01:1 to 10:1 (9:16 recommended) | scaled down if wider                            |
 | Audio      | AAC, ≤ 48 kHz, mono/stereo, 128 kbps                      | re-encoded to AAC 48 kHz stereo 128 kbps        |
 | Bitrate    | ≤ 25 Mbps                                                 | capped so the file stays under 300 MB           |
-| Duration   | 3 s – 15 min                                              | longer/shorter videos are refused (not fixable) |
+| Duration   | 3 s – 90 s in practice (the reference says 15 min)        | longer/shorter videos are refused (not fixable) |
 | File size  | ≤ 300 MB                                                  | bitrate cap                                     |
 | Caption    | ≤ 2200 characters, ≤ 30 hashtags, ≤ 20 @mentions          | caption + hashtags, same as Facebook            |
 
@@ -70,3 +70,8 @@ Re-encoded copies are cached in `workspace/data/normalized/{hash}.instagram.mp4`
 5. `reel-cli instagram publish` (prepares), then again (publishes), or `reel-cli worker --once` twice.
 6. `reel-cli show <id>` → attempts `instagram:START/TRANSFER/VERIFY/FINISH` and the Instagram link.
 7. Record anything Meta's docs got wrong (field shapes, timings) here, like the `publish_time` surprise on the Facebook side.
+
+### Found in the first live test (2026-10-13)
+
+- **Reels longer than 90 s are refused**, despite the 15 min in the reference. The same file cut to 85 s uploads and reaches `FINISHED`; cut to 95 s, 170 s or left at 7.5 min, the upload answers HTTP 400 `{"debug_info":{"type":"ProcessingFailedError","message":"Request processing failed"}}` (a second upload to the same container: HTTP 500 "Video Transcoding Error"). reel-cli now treats > 90 s as not possible on Instagram.
+- rupload errors use `debug_info`, not the Graph `error` object; reel-cli shows `type: message`.

@@ -31,12 +31,12 @@ describe('Instagram Reel spec', () => {
     expect(instagramBlockers(av1, 400 * MB)).toEqual([]);
   });
 
-  it('length outside 3 s – 15 min cannot be fixed', () => {
+  it('length outside 3 s – 90 s cannot be fixed', () => {
     expect(instagramBlockers(mediaInfo({ durationS: 16 * 60 }), MB)).toEqual([
-      'duration 16.0 min > 15 min (Instagram limit)',
+      'duration 960 s > 90 s (Instagram API limit)',
     ]);
     expect(instagramBlockers(mediaInfo({ durationS: 2 }), MB)).toEqual(['duration 2.0s < 3s']);
-    expect(instagramBlockers(mediaInfo({ durationS: 15 * 60 }), MB)).toEqual([]);
+    expect(instagramBlockers(mediaInfo({ durationS: 90 }), MB)).toEqual([]);
   });
 });
 

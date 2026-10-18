@@ -1,9 +1,12 @@
 import type { MediaInfo, SpecIssue } from '../domain/media.js';
 
-/** Instagram Reels API requirements (IG User Media reference, checked 2026-10-04). */
+/**
+ * Instagram Reels API requirements (IG User Media reference, checked 2026-10-04). The reference says
+ * 15 min, but uploads over 90 s fail with ProcessingFailedError (measured 2026-10-13: 85 s ok, 95 s not).
+ */
 export const INSTAGRAM_REEL_SPEC = {
   minDurationS: 3,
-  maxDurationS: 15 * 60,
+  maxDurationS: 90,
   maxFileSize: 300 * 1024 * 1024,
   videoCodecs: ['h264', 'hevc'],
   audioCodec: 'aac',
@@ -28,7 +31,7 @@ export function checkInstagramReelSpec(info: MediaInfo, fileSize: number): Array
   if (d === null) add('DURATION_UNKNOWN', 'duration could not be determined', false);
   else if (d < s.minDurationS) add('DURATION_TOO_SHORT', `duration ${d.toFixed(1)}s < ${s.minDurationS}s`, false);
   else if (d > s.maxDurationS + 0.5)
-    add('DURATION_TOO_LONG', `duration ${(d / 60).toFixed(1)} min > 15 min (Instagram limit)`, false);
+    add('DURATION_TOO_LONG', `duration ${Math.round(d)} s > ${s.maxDurationS} s (Instagram API limit)`, false);
 
   const v = info.video;
   if (!v) add('NO_VIDEO', 'no video stream', false);

@@ -30,7 +30,7 @@ const MIRRORABLE: Array<Video['state']> = ['READY', 'HELD', 'UPLOADING', 'FINISH
 
 /**
  * Gives Instagram the same videos and times as Facebook (shifted by `offsetMinutes`). Only future
- * Facebook times are mirrored; videos Instagram can't take (> 15 min) are reported, and Instagram
+ * Facebook times are mirrored; videos Instagram can't take (> 90 s) are reported, and Instagram
  * posts already sent to Instagram are never changed.
  */
 export function planInstagramFromFacebook(db: Db, opts: PlanFromFacebookOptions): PlanFromFacebookReport {

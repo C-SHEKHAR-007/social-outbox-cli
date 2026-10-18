@@ -115,7 +115,7 @@ describe('instagram commands and worker', () => {
     ]);
     expect(preview.skipped.map((s) => [s.video.id, s.reason])).toEqual([
       [past.id, 'Facebook time already passed'],
-      [long.id, 'duration 20.0 min > 15 min (Instagram limit)'],
+      [long.id, 'duration 1200 s > 90 s (Instagram API limit)'],
     ]);
     expect(out.text()).toContain('Preview only');
     expect(igRow(a.id)).toBeUndefined();
