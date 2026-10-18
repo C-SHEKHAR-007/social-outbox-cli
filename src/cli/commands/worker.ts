@@ -19,13 +19,18 @@ export interface WorkerDeps extends InstagramCommandDeps {
   idle?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
-const defaultIdle = (ms: number, signal: AbortSignal) =>
+/** Sleeps `ms`, or less if `signal` aborts. Removes its listener, so a long-running worker doesn't pile them up. */
+export const defaultIdle = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
-    const t = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => {
+    const onAbort = () => {
       clearTimeout(t);
       resolve();
-    });
+    };
+    const t = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 
 /**
